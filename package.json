@@ -1,5 +1,5 @@
 {
-  "name": "tako-scaffold",
+  "name": "the-daily-tako",
   "version": "0.1.0",
   "private": true,
   "scripts": {
@@ -12,7 +12,7 @@
   },
   "dependencies": {
     "@ai-sdk/openai": "^4.0.0",
-    "@takoviz/ai-sdk": "^2.0.0",
+    "@takoviz/ai-sdk": "2.0.0",
     "ai": "^7.0.2",
     "framer-motion": "^12.42.0",
     "next": "16.2.9",
