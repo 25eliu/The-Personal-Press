@@ -22,6 +22,22 @@ function keywords(s: string): Set<string> {
   return new Set(s.toLowerCase().split(/[^a-z0-9]+/).filter((w) => w.length > 3));
 }
 
+export function sanitizePage(page: TPage): TPage {
+  const articles = page.articles.map((a) => {
+    const sources = a.sources.map((s) => {
+      const url = validUrl(s.url);
+      return url ? { name: s.name, url } : { name: s.name };
+    });
+    return {
+      ...a,
+      chartImageUrl: validUrl(a.chartImageUrl),
+      chartEmbedUrl: validUrl(a.chartEmbedUrl),
+      sources,
+    };
+  });
+  return { ...page, articles };
+}
+
 export function attachArt(page: TPage, f: Findings): TPage {
   const cardsWithArt = f.cards.filter((c) => validUrl(c.image_url));
   const articles = page.articles.map((a) => {
@@ -90,8 +106,7 @@ export async function runReporter(topic: string, isFront: boolean, masthead: str
       prompt: distillPrompt(topic, isFront, findingsContext(findings)),
     });
 
-    const page: TPage = { ...object, topic };
-    return attachArt(page, findings);
+    return attachArt(sanitizePage({ ...object, topic }), findings);
   } catch {
     return emptyPage(topic);
   }

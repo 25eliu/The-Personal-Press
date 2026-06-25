@@ -1,5 +1,5 @@
 import { expect, test } from 'vitest';
-import { attachArt, emptyPage, findingsContext } from '@/lib/agents/reporter';
+import { attachArt, emptyPage, findingsContext, sanitizePage } from '@/lib/agents/reporter';
 import type { Findings } from '@/lib/tako/tools';
 
 const findings: Findings = {
@@ -36,4 +36,28 @@ test('emptyPage degrades gracefully with one sourced brief', () => {
   expect(p.articles).toHaveLength(1);
   expect(p.articles[0].size).toBe('brief');
   expect(p.articles[0].sources.length).toBeGreaterThanOrEqual(1);
+});
+
+test('sanitizePage strips javascript:/data: URLs from chart art and sources', () => {
+  const page = { topic: 'T', articles: [{
+    kicker: 'k', headline: 'h', body: 'b', size: 'brief' as const, byline: 'Tako Wire',
+    chartImageUrl: 'javascript:alert(1)',
+    chartEmbedUrl: 'data:text/html,<script>x</script>',
+    sources: [{ name: 'Evil', url: 'javascript:alert(2)' }, { name: 'Good', url: 'https://ok.com/x' }],
+  }] };
+  const out = sanitizePage(page as any);
+  expect(out.articles[0].chartImageUrl).toBeUndefined();
+  expect(out.articles[0].chartEmbedUrl).toBeUndefined();
+  expect(out.articles[0].sources[0]).toEqual({ name: 'Evil' });        // bad url dropped, name kept
+  expect(out.articles[0].sources[1]).toEqual({ name: 'Good', url: 'https://ok.com/x' });
+  expect((page.articles[0] as any).chartImageUrl).toBe('javascript:alert(1)'); // input unmutated
+});
+
+test('sanitizePage keeps valid https chart art', () => {
+  const page = { topic: 'T', articles: [{
+    kicker: 'k', headline: 'h', body: 'b', size: 'brief' as const, byline: 'Tako Wire',
+    chartImageUrl: 'https://trytako.com/img/x',
+    sources: [{ name: 'S', url: 'https://s.com' }],
+  }] };
+  expect(sanitizePage(page as any).articles[0].chartImageUrl).toBe('https://trytako.com/img/x');
 });

@@ -50,14 +50,19 @@ export function DailyTako() {
     }
   }
 
+  useEffect(() => () => abortRef.current?.abort(), []);
+
   async function start(b: string) {
+    abortRef.current?.abort();
     localStorage.setItem('tako-brief', b);
     setBrief(b); setError(null); setNewspaper(null); setPlan([]); setPages([]); setPhase('typesetting');
     abortRef.current = new AbortController();
     try {
       await streamGenerate(b, onEvent, abortRef.current.signal);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Something went wrong.');
+      if (!(err instanceof DOMException && err.name === 'AbortError')) {
+        setError(err instanceof Error ? err.message : 'Something went wrong.');
+      }
     }
   }
 
@@ -65,7 +70,7 @@ export function DailyTako() {
     <main className="flex min-h-screen flex-col items-center gap-6 p-6">
       {phase !== 'idle' && (
         <div className="flex w-full max-w-6xl items-center justify-between">
-          <button onClick={() => setPhase('idle')} className="text-xs uppercase tracking-widest text-[#f4efe2]/70 hover:text-[#f4efe2]">
+          <button onClick={() => { abortRef.current?.abort(); setPhase('idle'); }} className="text-xs uppercase tracking-widest text-[#f4efe2]/70 hover:text-[#f4efe2]">
             ← New paper
           </button>
           <BWToggle bw={bw} onToggle={toggleBw} />
