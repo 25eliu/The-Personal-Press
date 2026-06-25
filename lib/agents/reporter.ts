@@ -5,6 +5,11 @@ import { Page, type TPage } from '@/lib/schema';
 import { reporterSystem } from '@/lib/agents/prompts';
 import { buildTakoTools, collectFindings, type Findings } from '@/lib/tako/tools';
 import { normalizeCardSources, normalizeWebResult, validUrl } from '@/lib/tako/normalize';
+import { toolDetail, toolLabel } from '@/lib/tako/labels';
+import { clip, logCall, usageSummary } from '@/lib/log';
+
+/** A single Tako tool call surfaced to the UI ("Using Tako search…"). */
+export type ReporterActivity = { tool: string; label: string; detail?: string };
 
 export function findingsContext(f: Findings): string {
   const cards = f.cards.map((c) => ({
@@ -84,30 +89,53 @@ RESEARCH (JSON):
 ${ctx}`;
 }
 
-export async function runReporter(topic: string, isFront: boolean, masthead: string): Promise<TPage> {
+export async function runReporter(
+  topic: string,
+  isFront: boolean,
+  masthead: string,
+  onActivity?: (a: ReporterActivity) => void,
+): Promise<TPage> {
   try {
     const tools = buildTakoTools();
-    const { steps } = await generateText({
+    logCall('reporter.start', { slot: isFront ? 0 : undefined, topic, model: MODEL });
+
+    const { steps, usage } = await generateText({
       model: openai(MODEL),
       system: reporterSystem(masthead),
       prompt: `Report the section: "${topic}". Gather sourced data with the Tako tools.`,
       tools,
       stopWhen: isStepCount(6),
+      onStepFinish: (step) => {
+        for (const call of step.toolCalls ?? []) {
+          const tool = call.toolName;
+          const detail = toolDetail((call as { input?: unknown }).input);
+          logCall('tool.call', { topic, tool, detail: clip(detail) });
+          onActivity?.({ tool, label: toolLabel(tool), detail });
+        }
+      },
     });
 
     const findings = collectFindings(steps);
+    logCall('reporter.done', {
+      topic, cards: findings.cards.length, web: findings.web.length,
+      answers: findings.answers.length, usage: usageSummary(usage),
+    });
+
     if (findings.cards.length === 0 && findings.web.length === 0 && findings.answers.length === 0) {
       return emptyPage(topic);
     }
 
-    const { object } = await generateObject({
+    logCall('distill.start', { topic, model: MODEL });
+    const { object, usage: distillUsage } = await generateObject({
       model: openai(MODEL),
       schema: Page,
       prompt: distillPrompt(topic, isFront, findingsContext(findings)),
     });
+    logCall('distill.done', { topic, articles: object.articles.length, usage: usageSummary(distillUsage) });
 
     return attachArt(sanitizePage({ ...object, topic }), findings);
-  } catch {
+  } catch (err) {
+    logCall('error', { scope: 'reporter', topic, message: err instanceof Error ? err.message : String(err) });
     return emptyPage(topic);
   }
 }

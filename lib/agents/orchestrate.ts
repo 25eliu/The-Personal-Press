@@ -1,16 +1,21 @@
 import { runEditor } from '@/lib/agents/editor';
 import { runReporter } from '@/lib/agents/reporter';
 import type { GenerateEvent, SectionPlanItem } from '@/lib/stream/events';
-import type { TNewspaper, TPage } from '@/lib/schema';
+import type { TNewspaper, TPage, TSectionPlan } from '@/lib/schema';
+import { clip, logCall } from '@/lib/log';
 
 export async function orchestrate(
   brief: string,
   emit: (e: GenerateEvent) => void,
 ): Promise<void> {
-  let plan;
+  logCall('request', { brief: clip(brief) });
+  let plan: TSectionPlan;
   try {
+    logCall('editor.start', { brief: clip(brief) });
     plan = await runEditor(brief);
+    logCall('editor.done', { masthead: plan.masthead, sections: plan.sections.map((s) => s.topic) });
   } catch (err) {
+    logCall('error', { scope: 'editor', message: err instanceof Error ? err.message : String(err) });
     emit({ type: 'error', message: err instanceof Error ? err.message : 'Editor failed.' });
     return;
   }
@@ -27,7 +32,9 @@ export async function orchestrate(
   await Promise.allSettled(
     planItems.map(async ({ topic, slot }) => {
       emit({ type: 'section_started', slot, topic });
-      const page = await runReporter(topic, slot === 0, plan!.masthead);
+      const page = await runReporter(topic, slot === 0, plan.masthead, (a) =>
+        emit({ type: 'tool_activity', slot, topic, tool: a.tool, label: a.label, detail: a.detail }),
+      );
       pages[slot] = page;
       emit({ type: 'section_done', slot, page });
     }),

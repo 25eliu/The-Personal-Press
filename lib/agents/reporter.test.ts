@@ -1,6 +1,7 @@
 import { expect, test } from 'vitest';
 import { attachArt, emptyPage, findingsContext, sanitizePage } from '@/lib/agents/reporter';
 import type { Findings } from '@/lib/tako/tools';
+import type { TPage } from '@/lib/schema';
 
 const findings: Findings = {
   cards: [{
@@ -21,8 +22,8 @@ test('findingsContext includes card titles, web titles, and answers', () => {
 });
 
 test('attachArt fills missing chart art from a title-matching card', () => {
-  const page = { topic: 'The Fed', articles: [
-    { kicker: 'Rates', headline: 'Federal Funds Rate holds', body: 'b', size: 'lead' as const,
+  const page: TPage = { topic: 'The Fed', articles: [
+    { kicker: 'Rates', headline: 'Federal Funds Rate holds', body: 'b', size: 'lead', byline: 'Tako Wire',
       sources: [{ name: 'St. Louis Fed', url: 'https://trytako.com/card/abc/' }] },
   ] };
   const out = attachArt(page, findings);
