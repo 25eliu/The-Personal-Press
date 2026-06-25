@@ -1,0 +1,55 @@
+@import 'tailwindcss';
+
+:root {
+  --font-body: Georgia, 'Old Standard TT', 'Times New Roman', serif;
+  --paper: #f4efe2;
+  --ink: #14110d;
+}
+
+body {
+  background: #2b2722;
+  color: var(--ink);
+  font-family: var(--font-body);
+}
+
+.paper {
+  background-color: var(--paper);
+  background-image:
+    radial-gradient(rgba(0, 0, 0, 0.035) 1px, transparent 1px),
+    radial-gradient(rgba(0, 0, 0, 0.025) 1px, transparent 1px);
+  background-size: 3px 3px, 4px 4px;
+  background-position: 0 0, 1px 2px;
+  color: var(--ink);
+}
+
+.font-masthead { font-family: var(--font-masthead), 'Playfair Display', serif; }
+.font-head { font-family: var(--font-head), Georgia, serif; }
+
+.ink-rule { border-color: var(--ink); }
+
+.dropcap::first-letter {
+  float: left;
+  font-family: var(--font-head), serif;
+  font-weight: 700;
+  font-size: 3.4em;
+  line-height: 0.8;
+  padding: 0.05em 0.08em 0 0;
+}
+
+.col-rule { column-rule: 1px solid rgba(20, 17, 13, 0.35); }
+
+/* B&W timeless mode: grayscale the whole paper */
+.bw { filter: grayscale(1) contrast(1.05); }
+
+/* Halftone dot overlay on figures */
+.halftone { position: relative; }
+.halftone::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background-image: radial-gradient(rgba(0, 0, 0, 0.5) 30%, transparent 31%);
+  background-size: 4px 4px;
+  mix-blend-mode: multiply;
+  opacity: 0.18;
+  pointer-events: none;
+}
