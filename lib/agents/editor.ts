@@ -10,6 +10,7 @@ export async function runEditor(brief: string): Promise<TSectionPlan> {
     schema: SectionPlan,
     system: EDITOR_SYSTEM,
     prompt: editorPrompt(brief),
+    providerOptions: { openai: { strictJsonSchema: false } },
   });
   return { ...object, sections: object.sections.slice(0, MAX_PAGES) };
 }

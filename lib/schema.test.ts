@@ -1,5 +1,14 @@
 import { expect, test } from 'vitest';
+import { z } from 'zod';
 import { Article, Newspaper, Page } from '@/lib/schema';
+
+// Regression: zod .url() emits JSON Schema `format: "uri"`, which OpenAI
+// structured-output strict mode rejects and breaks every distill call. The
+// Page schema (passed to generateObject) must contain no `format: uri`.
+test('Page distill schema has no unsupported "uri" format', () => {
+  const json = JSON.stringify(z.toJSONSchema(Page));
+  expect(json).not.toMatch(/"format"\s*:\s*"uri"/);
+});
 
 test('Article requires at least one source', () => {
   const base = {

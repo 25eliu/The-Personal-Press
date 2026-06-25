@@ -6,9 +6,9 @@
   --paper: #f4efe2;
   --ink: #14110d;
   --accent: #c0341d; /* printer's vermilion */
-  /* YOUR BACKGROUND GOES HERE: drop your art at public/desk.png and it overrides
-     the placeholder automatically. (To use a different name, change this URL.) */
-  --desk-image: url('/desk.png');
+  /* Your background art (public/background.jpg). Falls back to the placeholder
+     SVG, then a wood gradient, if the file is ever missing. */
+  --desk-image: url('/background.jpg');
 }
 
 body {

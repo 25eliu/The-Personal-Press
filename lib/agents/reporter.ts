@@ -130,6 +130,12 @@ export async function runReporter(
       model: openai(MODEL),
       schema: Page,
       prompt: distillPrompt(topic, isFront, findingsContext(findings)),
+      // OpenAI strict structured outputs reject optional fields (it requires every
+      // property in `required`). Disable strict; zod still validates the result.
+      providerOptions: { openai: { strictJsonSchema: false } },
+      // Distilling a full page from a large research blob occasionally returns an
+      // object that fails validation; a couple of extra retries makes it reliable.
+      maxRetries: 3,
     });
     logCall('distill.done', { topic, articles: object.articles.length, usage: usageSummary(distillUsage) });
 

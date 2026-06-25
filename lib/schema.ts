@@ -1,8 +1,12 @@
 import { z } from 'zod';
 
+// NOTE: URL fields are plain strings, NOT z.string().url(). zod v4's .url() emits
+// JSON Schema `format: "uri"`, which OpenAI structured-output strict mode rejects
+// ("'uri' is not a valid format"). http(s) validity is enforced at runtime instead
+// by validUrl()/sanitizePage() in lib/tako, which run on every distilled page.
 export const Source = z.object({
   name: z.string(),
-  url: z.string().url().optional(),
+  url: z.string().optional(),
 });
 
 export const TableData = z.object({
@@ -18,8 +22,8 @@ export const Article = z.object({
   byline: z.string().default('Tako Wire'),
   body: z.string(),
   size: z.enum(['lead', 'standard', 'brief']),
-  chartImageUrl: z.string().url().optional(),
-  chartEmbedUrl: z.string().url().optional(),
+  chartImageUrl: z.string().optional(),
+  chartEmbedUrl: z.string().optional(),
   table: TableData.optional(),
   sources: z.array(Source).min(1),
 });
