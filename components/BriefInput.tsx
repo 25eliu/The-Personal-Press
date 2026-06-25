@@ -26,7 +26,7 @@ export function BriefInput({ initial, onSubmit }: { initial: string; onSubmit: (
           <span className="font-mono-news hidden sm:inline">Powered by Tako</span>
           <span>Price: Free</span>
         </div>
-        <h1 className="font-masthead text-5xl leading-none text-[var(--ink)] md:text-7xl">The Daily Tako</h1>
+        <h1 className="font-masthead text-5xl leading-none text-[var(--ink)] md:text-7xl">The Personal Press</h1>
         <p className="mt-2 border-t-2 border-[var(--ink)] pt-1 font-head text-sm italic text-[var(--ink)]/80">
           All the data that&rsquo;s fit to print &mdash; reported live by an AI newsroom
         </p>

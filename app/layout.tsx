@@ -6,7 +6,7 @@ const masthead = UnifrakturCook({ weight: '700', subsets: ['latin'], variable: '
 const head = Playfair_Display({ subsets: ['latin'], variable: '--font-head' });
 
 export const metadata: Metadata = {
-  title: 'The Daily Tako',
+  title: 'The Personal Press',
   description: 'A customizable AI newspaper grounded in real, sourced data.',
 };
 

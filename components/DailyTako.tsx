@@ -1,20 +1,34 @@
 'use client';
-import dynamic from 'next/dynamic';
 import { useEffect, useRef, useState } from 'react';
-import type { TNewspaper, TPage } from '@/lib/schema';
+import { BRAND } from '@/lib/config';
+import type { TPage } from '@/lib/schema';
 import type { GenerateEvent, SectionPlanItem } from '@/lib/stream/events';
 import { streamGenerate } from '@/lib/stream/client';
 import { playDemo } from '@/lib/demo/sample';
 import { BriefInput } from '@/components/BriefInput';
 import { BWToggle } from '@/components/BWToggle';
-import { TypesettingStage } from '@/components/build/TypesettingStage';
-import type { ActivityItem } from '@/components/build/WireTicker';
-
-const PageFlipReader = dynamic(() => import('@/components/flip/PageFlipReader'), { ssr: false });
+import { WireTicker, type ActivityItem } from '@/components/build/WireTicker';
+import { NewspaperView } from '@/components/newspaper/NewspaperView';
 
 type Phase = 'idle' | 'typesetting' | 'printing' | 'reading';
 type Meta = { masthead: string; tagline: string; edition: string; dateLine: string };
-const EMPTY_META: Meta = { masthead: 'The Daily Tako', tagline: '', edition: '', dateLine: '' };
+const EMPTY_META: Meta = { masthead: BRAND, tagline: '', edition: '', dateLine: '' };
+
+// Sarcastic newsroom quips mixed into the wire while the agents work.
+const QUIPS = [
+  'Consulting the octopus for a second opinion.',
+  'Fact-checker located; mild panic ensues.',
+  'Headline desk arguing about an Oxford comma.',
+  'Bribing the typesetter with biscuits.',
+  'Editor insists every chart “needs more drama.”',
+  'Markets desk whispering sweet nothings to a spreadsheet.',
+  'Sports desk still litigating that offside call.',
+  'Printing press warming up, demanding overtime.',
+  'Intern dispatched for more coffee. Again.',
+  'Wire desk: “this just in, and it’s mildly interesting.”',
+  'Polishing a pull-quote nobody asked for.',
+  'Ink levels: dramatic. Deadlines: more dramatic.',
+];
 
 export function DailyTako() {
   const [phase, setPhase] = useState<Phase>('idle');
@@ -23,16 +37,31 @@ export function DailyTako() {
   const [meta, setMeta] = useState<Meta>(EMPTY_META);
   const [plan, setPlan] = useState<SectionPlanItem[]>([]);
   const [pages, setPages] = useState<(TPage | null)[]>([]);
-  const [newspaper, setNewspaper] = useState<TNewspaper | null>(null);
   const [activity, setActivity] = useState<ActivityItem[]>([]);
   const [error, setError] = useState<string | null>(null);
   const abortRef = useRef<AbortController | null>(null);
   const activityId = useRef(0);
 
+  const building = phase === 'typesetting' || phase === 'printing';
+
   useEffect(() => {
     setBw(localStorage.getItem('tako-bw') !== 'false');
     setBrief(localStorage.getItem('tako-brief') ?? '');
   }, []);
+
+  useEffect(() => () => abortRef.current?.abort(), []);
+
+  // Drip sarcastic quips onto the wire while building.
+  useEffect(() => {
+    if (!building) return;
+    const id = setInterval(() => {
+      setActivity((prev) => [
+        ...prev,
+        { id: activityId.current++, kind: 'quip', label: QUIPS[Math.floor(Math.random() * QUIPS.length)] },
+      ]);
+    }, 3400);
+    return () => clearInterval(id);
+  }, [building]);
 
   function toggleBw() {
     setBw((prev) => { localStorage.setItem('tako-bw', String(!prev)); return !prev; });
@@ -44,14 +73,13 @@ export function DailyTako() {
       setPlan(e.plan);
       setPages(new Array(e.plan.length).fill(null));
     } else if (e.type === 'tool_activity') {
-      const item: ActivityItem = {
-        id: activityId.current++, slot: e.slot, topic: e.topic, label: e.label, detail: e.detail,
-      };
-      setActivity((prev) => [...prev, item]);
+      setActivity((prev) => [
+        ...prev,
+        { id: activityId.current++, kind: 'tako', slot: e.slot, topic: e.topic, label: e.label, detail: e.detail },
+      ]);
     } else if (e.type === 'section_done') {
       setPages((prev) => { const next = [...prev]; next[e.slot] = e.page; return next; });
     } else if (e.type === 'complete') {
-      setNewspaper(e.newspaper);
       setPhase('printing');
       setTimeout(() => setPhase('reading'), 900);
     } else if (e.type === 'error') {
@@ -59,11 +87,9 @@ export function DailyTako() {
     }
   }
 
-  useEffect(() => () => abortRef.current?.abort(), []);
-
   function resetForRun() {
     abortRef.current?.abort();
-    setError(null); setNewspaper(null); setPlan([]); setPages([]); setActivity([]); setPhase('typesetting');
+    setError(null); setPlan([]); setPages([]); setActivity([]); setPhase('typesetting');
     abortRef.current = new AbortController();
     return abortRef.current.signal;
   }
@@ -87,13 +113,16 @@ export function DailyTako() {
   }
 
   return (
-    <main className="relative flex min-h-screen flex-col items-center gap-6 p-6">
-      {/* Dim the desk so the cream pages pop during build + reading. */}
-      {phase !== 'idle' && <div className="fixed inset-0 -z-10 bg-black/55 backdrop-blur-[1px]" />}
+    <main className="relative flex min-h-screen flex-col items-center gap-4 p-5">
+      {/* Light scrim so cream pages pop without hiding the desk. */}
+      {phase !== 'idle' && <div className="fixed inset-0 -z-10 bg-black/25" />}
 
       {phase !== 'idle' && (
-        <div className="flex w-full max-w-6xl items-center justify-between">
-          <button onClick={() => { abortRef.current?.abort(); setPhase('idle'); }} className="font-mono-news text-xs uppercase tracking-widest text-[#f4efe2]/70 transition-colors hover:text-[#f4efe2]">
+        <div className="flex w-full max-w-[1100px] items-center justify-between">
+          <button
+            onClick={() => { abortRef.current?.abort(); setPhase('idle'); }}
+            className="font-mono-news text-xs uppercase tracking-widest text-[#f4efe2]/80 drop-shadow transition-colors hover:text-[#f4efe2]"
+          >
             ← New paper
           </button>
           <BWToggle bw={bw} onToggle={toggleBw} />
@@ -111,24 +140,19 @@ export function DailyTako() {
           <BriefInput initial={brief} onSubmit={start} />
           <button
             onClick={startDemo}
-            className="font-mono-news text-[11px] uppercase tracking-[0.2em] text-[#f4efe2]/75 underline-offset-4 transition-colors hover:text-[#f4efe2] hover:underline"
+            className="font-mono-news text-[11px] uppercase tracking-[0.2em] text-[#f4efe2]/80 underline-offset-4 drop-shadow transition-colors hover:text-[#f4efe2] hover:underline"
           >
             ▸ Preview a sample edition (no API key)
           </button>
         </div>
       )}
 
-      {(phase === 'typesetting' || phase === 'printing') && (
-        <div className={bw ? 'bw w-full flex justify-center' : 'w-full flex justify-center'}>
-          <TypesettingStage
-            plan={plan} pages={pages} activity={activity}
-            masthead={meta.masthead} tagline={meta.tagline} edition={meta.edition} dateLine={meta.dateLine}
-            printed={phase === 'printing'}
-          />
-        </div>
+      {phase !== 'idle' && (
+        <>
+          {building && <WireTicker items={activity} />}
+          <NewspaperView plan={plan} pages={pages} meta={meta} building={building} bw={bw} />
+        </>
       )}
-
-      {phase === 'reading' && newspaper && <PageFlipReader newspaper={newspaper} bw={bw} />}
     </main>
   );
 }

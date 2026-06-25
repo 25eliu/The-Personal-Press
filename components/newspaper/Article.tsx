@@ -12,7 +12,7 @@ const HEADLINE_SIZE: Record<TArticle['size'], string> = {
 export function Article({ article }: { article: TArticle }) {
   const isLead = article.size === 'lead';
   return (
-    <article className="mb-4 break-inside-avoid">
+    <article>
       <p className="text-[10px] font-bold uppercase tracking-widest text-black/70">{article.kicker}</p>
       <h2 className={`font-head font-black leading-tight ${HEADLINE_SIZE[article.size]}`}>{article.headline}</h2>
       {article.dek && <p className="mt-0.5 font-head text-sm italic text-black/80">{article.dek}</p>}

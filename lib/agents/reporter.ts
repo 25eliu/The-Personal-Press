@@ -1,6 +1,6 @@
 import { generateObject, generateText, isStepCount } from 'ai';
 import { openai } from '@ai-sdk/openai';
-import { MODEL, WORD_CAPS } from '@/lib/config';
+import { BRAND, MODEL, WORD_CAPS } from '@/lib/config';
 import { Page, type TPage } from '@/lib/schema';
 import { reporterSystem } from '@/lib/agents/prompts';
 import { buildTakoTools, collectFindings, type Findings } from '@/lib/tako/tools';
@@ -68,7 +68,7 @@ export function emptyPage(topic: string): TPage {
     articles: [{
       kicker: topic, headline: 'No fresh reporting on the wire', byline: 'Tako Wire',
       body: 'Our reporters found no new sourced data on this topic for today’s edition.',
-      size: 'brief', sources: [{ name: 'The Daily Tako' }],
+      size: 'brief', sources: [{ name: BRAND }],
     }],
   };
 }

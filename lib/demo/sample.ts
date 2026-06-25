@@ -7,7 +7,7 @@ import type { GenerateEvent } from '@/lib/stream/events';
 import type { TNewspaper } from '@/lib/schema';
 
 const SAMPLE: TNewspaper = {
-  masthead: 'The Daily Tako',
+  masthead: 'The Personal Press',
   tagline: 'A sample edition — sourced data, set in type',
   edition: 'Vol. I · Sample',
   dateLine: 'Sample Edition',

@@ -1,11 +1,12 @@
 'use client';
 import { AnimatePresence, motion } from 'framer-motion';
 
-/** One Tako tool call surfaced live in the UI. */
+/** A line on the wire: a real Tako tool call ('tako') or a sarcastic quip ('quip'). */
 export type ActivityItem = {
   id: number;
-  slot: number;
-  topic: string;
+  kind: 'tako' | 'quip';
+  slot?: number;
+  topic?: string;
   label: string;
   detail?: string;
 };
@@ -16,6 +17,7 @@ export type ActivityItem = {
  */
 export function WireTicker({ items }: { items: ActivityItem[] }) {
   const latest = items.length > 0 ? items[items.length - 1] : null;
+  const takoCount = items.filter((i) => i.kind === 'tako').length;
   return (
     <div className="ticker font-mono-news w-full max-w-6xl overflow-hidden rounded-sm border border-black/70 shadow-lg">
       <div className="flex h-10 items-stretch">
@@ -34,9 +36,15 @@ export function WireTicker({ items }: { items: ActivityItem[] }) {
                 transition={{ duration: 0.22 }}
                 className="w-full truncate"
               >
-                <span className="font-bold uppercase tracking-wide">{latest.label}</span>
-                {latest.detail && <span className="opacity-80"> — “{latest.detail}”</span>}
-                <span className="opacity-50"> · {latest.topic}</span>
+                {latest.kind === 'quip' ? (
+                  <span className="italic opacity-90">🐙 {latest.label}</span>
+                ) : (
+                  <>
+                    <span className="font-bold uppercase tracking-wide">{latest.label}</span>
+                    {latest.detail && <span className="opacity-80"> — “{latest.detail}”</span>}
+                    {latest.topic && <span className="opacity-50"> · {latest.topic}</span>}
+                  </>
+                )}
               </motion.div>
             ) : (
               <motion.span key="idle" initial={{ opacity: 0 }} animate={{ opacity: 0.6 }} className="truncate">
@@ -46,7 +54,7 @@ export function WireTicker({ items }: { items: ActivityItem[] }) {
           </AnimatePresence>
         </div>
         <div className="hidden shrink-0 items-center gap-2 px-3 text-[10px] uppercase tracking-widest text-[var(--paper)]/50 sm:flex">
-          {items.length > 0 && <span className="text-[var(--paper)]/70">{items.length}</span>}
+          {takoCount > 0 && <span className="text-[var(--paper)]/70">{takoCount} Tako calls</span>}
           Powered by Tako
         </div>
       </div>
