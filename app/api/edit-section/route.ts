@@ -17,10 +17,12 @@ export const maxDuration = 120;
 export async function POST(req: Request) {
   let topic = '';
   let isFront = false;
+  let context: string | undefined;
   try {
     const body = await req.json();
     topic = typeof body?.topic === 'string' ? body.topic.trim() : '';
     isFront = body?.isFront === true;
+    context = typeof body?.context === 'string' ? body.context : undefined;
   } catch {
     return new Response('Invalid JSON', { status: 400 });
   }
@@ -44,14 +46,11 @@ export async function POST(req: Request) {
 
       try {
         safeEnqueue({ type: 'section_started', slot: 0, topic });
-        const page = await runReporter(
-          topic,
-          isFront,
-          BRAND,
-          todayContext(),
-          (a) => safeEnqueue({ type: 'tool_activity', slot: 0, topic, tool: a.tool, label: a.label, detail: a.detail }),
+        const page = await runReporter(topic, isFront, BRAND, todayContext(), {
+          context,
+          onActivity: (a) => safeEnqueue({ type: 'tool_activity', slot: 0, topic, tool: a.tool, label: a.label, detail: a.detail }),
           signal,
-        );
+        });
         if (!hasRealContent(page)) {
           safeEnqueue({ type: 'error', message: `No fresh reporting found for “${topic}”.` });
         } else {

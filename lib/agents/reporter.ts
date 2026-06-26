@@ -2,11 +2,10 @@ import { generateObject, generateText, isStepCount } from 'ai';
 import { openai } from '@ai-sdk/openai';
 import { BRAND, MODEL, WORD_CAPS } from '@/lib/config';
 import { Page, type TPage } from '@/lib/schema';
-import { reporterSystem } from '@/lib/agents/prompts';
+import { groundingBlock, reporterSystem } from '@/lib/agents/prompts';
 import { buildTakoTools, collectFindings, type Findings } from '@/lib/tako/tools';
 import { normalizeCardSources, normalizeWebResult, validUrl } from '@/lib/tako/normalize';
 import { toolDetail, toolLabel } from '@/lib/tako/labels';
-import { bundlesContext, synthesizeBundles, type StoryBundle } from '@/lib/agents/synthesize';
 import type { TodayContext } from '@/lib/time/clock';
 import { clip, logCall, usageSummary } from '@/lib/log';
 
@@ -83,43 +82,45 @@ export function hasRealContent(page: TPage): boolean {
   return page.articles.some((a) => a.headline !== NO_REPORT_HEADLINE);
 }
 
-function distillPrompt(
+export function distillPrompt(
   topic: string,
   isFront: boolean,
   ctx: string,
   today: TodayContext,
-  paired: boolean,
+  context?: string,
 ): string {
   const layout = isFront
     ? 'This is the FRONT PAGE: produce exactly one "lead" article plus 2 or 3 "brief" articles.'
     : 'This is a TOPIC PAGE: produce 2 to 4 articles sized "standard" or "brief" (at most one "lead").';
-  const sourceShape = paired
-    ? `The research below is pre-clustered into story bundles that already pair Tako numbers ` +
-      `(dataPoints) with web narrative. Write one article per bundle where possible, leading with ` +
-      `the number/finding and weaving in the narrative. Bundles are ordered freshest-first — lead ` +
-      `with the freshest. If a bundle is not fresh it carries an "asOf" stamp; when you use it, work ` +
-      `that "as of <date>" into the kicker or dek so the reader knows it is not from today.`
-    : `Write the page strictly from the raw research below, preferring the most recent sources.`;
   return `Today is ${today.dateLine}. Topic: "${topic}"
-${layout}
+${layout}${groundingBlock(context)}
 
-${sourceShape}
-Every article MUST include at least one source drawn from this research. Do not invent facts,
-sources, or dates. Respect word caps (lead <= ${WORD_CAPS.lead}, standard <= ${WORD_CAPS.standard},
-brief <= ${WORD_CAPS.brief}). If the research is thin, write fewer, shorter articles rather than padding.
+Write the page strictly from the research below. Pair Tako's hard numbers with the web's narrative
+about the SAME story, leading each article with the number/finding. Prefer the most recent sources;
+if you must use older data, work an "as of <date>" into the kicker or dek. Every article MUST include
+at least one source drawn from this research. Do not invent facts, sources, or dates. Respect word
+caps (lead <= ${WORD_CAPS.lead}, standard <= ${WORD_CAPS.standard}, brief <= ${WORD_CAPS.brief}).
+If the research is thin, write fewer, shorter articles rather than padding.
 
 RESEARCH (JSON):
 ${ctx}`;
 }
+
+export type ReporterOpts = {
+  context?: string;
+  onActivity?: (a: ReporterActivity) => void;
+  onDraftToken?: (t: string) => void;   // used in Task 4; accept now, ignore here
+  signal?: AbortSignal;
+};
 
 export async function runReporter(
   topic: string,
   isFront: boolean,
   masthead: string,
   today: TodayContext,
-  onActivity?: (a: ReporterActivity) => void,
-  signal?: AbortSignal,
+  opts: ReporterOpts = {},
 ): Promise<TPage> {
+  const { context, onActivity, signal } = opts;
   try {
     const tools = buildTakoTools();
     logCall('reporter.start', { slot: isFront ? 0 : undefined, topic, model: MODEL });
@@ -127,7 +128,8 @@ export async function runReporter(
     const { steps, usage } = await generateText({
       model: openai(MODEL),
       system: reporterSystem(masthead, today),
-      prompt: `Report the section: "${topic}" as of ${today.dateLine}. Gather the LATEST sourced data with the Tako tools.`,
+      prompt: `Report the section: "${topic}" as of ${today.dateLine}. Stay strictly on this topic; ` +
+        `gather the LATEST sourced data about it with the Tako tools.`,
       tools,
       stopWhen: isStepCount(6),
       abortSignal: signal,
@@ -146,40 +148,21 @@ export async function runReporter(
       topic, cards: findings.cards.length, web: findings.web.length,
       answers: findings.answers.length, usage: usageSummary(usage),
     });
-
     if (findings.cards.length === 0 && findings.web.length === 0 && findings.answers.length === 0) {
       return emptyPage(topic);
     }
 
-    // Pair Tako numbers with web narrative into freshness-ranked story bundles. If the
-    // synthesis call fails, fall back to the raw findings so the paper never breaks.
-    let research = findingsContext(findings);
-    let paired = false;
-    try {
-      const bundles: StoryBundle[] = await synthesizeBundles(topic, findings, today, signal);
-      if (bundles.length > 0) {
-        research = bundlesContext(bundles);
-        paired = true;
-      }
-    } catch (err) {
-      logCall('synthesize.fallback', { topic, message: err instanceof Error ? err.message : String(err) });
-    }
-
-    logCall('distill.start', { topic, model: MODEL, paired });
+    const research = findingsContext(findings);
+    logCall('distill.start', { topic, model: MODEL });
     const { object, usage: distillUsage } = await generateObject({
       model: openai(MODEL),
       schema: Page,
-      prompt: distillPrompt(topic, isFront, research, today, paired),
-      // OpenAI strict structured outputs reject optional fields (it requires every
-      // property in `required`). Disable strict; zod still validates the result.
+      prompt: distillPrompt(topic, isFront, research, today, context),
       providerOptions: { openai: { strictJsonSchema: false } },
-      // Distilling a full page from a large research blob occasionally returns an
-      // object that fails validation; a couple of extra retries makes it reliable.
       maxRetries: 3,
       abortSignal: signal,
     });
     logCall('distill.done', { topic, articles: object.articles.length, usage: usageSummary(distillUsage) });
-
     return attachArt(sanitizePage({ ...object, topic }), findings);
   } catch (err) {
     logCall('error', { scope: 'reporter', topic, message: err instanceof Error ? err.message : String(err) });

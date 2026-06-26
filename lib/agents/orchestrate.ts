@@ -39,10 +39,10 @@ export async function orchestrate(
   await Promise.allSettled(
     planItems.map(async ({ topic, slot }) => {
       emit({ type: 'section_started', slot, topic });
-      const page = await runReporter(topic, slot === 0, plan.masthead, today, (a) =>
-        emit({ type: 'tool_activity', slot, topic, tool: a.tool, label: a.label, detail: a.detail }),
+      const page = await runReporter(topic, slot === 0, plan.masthead, today, {
+        onActivity: (a) => emit({ type: 'tool_activity', slot, topic, tool: a.tool, label: a.label, detail: a.detail }),
         signal,
-      );
+      });
       pages[slot] = page;
       emit({ type: 'section_done', slot, page });
     }),

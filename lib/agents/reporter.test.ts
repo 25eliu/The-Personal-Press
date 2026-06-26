@@ -1,5 +1,6 @@
 import { expect, test } from 'vitest';
-import { attachArt, emptyPage, findingsContext, sanitizePage } from '@/lib/agents/reporter';
+import { attachArt, distillPrompt, emptyPage, findingsContext, sanitizePage } from '@/lib/agents/reporter';
+import { todayContext } from '@/lib/time/clock';
 import type { Findings } from '@/lib/tako/tools';
 import type { TPage } from '@/lib/schema';
 
@@ -61,4 +62,13 @@ test('sanitizePage keeps valid https chart art', () => {
     sources: [{ name: 'S', url: 'https://s.com' }],
   }] };
   expect(sanitizePage(page as any).articles[0].chartImageUrl).toBe('https://trytako.com/img/x');
+});
+
+test('distillPrompt embeds grounding context when provided', () => {
+  const today = todayContext(new Date('2026-06-25T00:00:00Z'));
+  const withCtx = distillPrompt('Premier League transfers', false, '{}', today, 'Prior transfers article');
+  expect(withCtx).toContain('EXISTING COVERAGE');
+  expect(withCtx).toContain('Prior transfers article');
+  const noCtx = distillPrompt('Premier League transfers', false, '{}', today);
+  expect(noCtx).not.toContain('EXISTING COVERAGE');
 });
