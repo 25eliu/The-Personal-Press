@@ -1,12 +1,7 @@
 'use client';
 import { useState } from 'react';
 import { motion } from 'framer-motion';
-
-const EXAMPLES = [
-  'AI startups, the Fed, and the Premier League',
-  'crypto markets, SpaceX, and the NBA playoffs',
-  'climate policy, oil prices, and the World Cup',
-];
+import { EXAMPLE_BRIEFS as EXAMPLES } from '@/lib/edition/examples';
 
 export function BriefInput({ initial, onSubmit }: { initial: string; onSubmit: (brief: string) => void }) {
   const [value, setValue] = useState(initial);

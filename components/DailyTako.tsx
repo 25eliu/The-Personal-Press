@@ -1,8 +1,11 @@
 'use client';
 import { useEffect, useReducer, useRef, useState } from 'react';
 import type { GenerateEvent } from '@/lib/stream/events';
+import type { TNewspaper } from '@/lib/schema';
 import { streamGenerate } from '@/lib/stream/client';
 import { editionReducer, initialEditionState } from '@/lib/edition/state';
+import { isExampleBrief } from '@/lib/edition/examples';
+import { getCachedEdition, setCachedEdition } from '@/lib/edition/exampleCache';
 import { playDemo } from '@/lib/demo/sample';
 import { BriefInput } from '@/components/BriefInput';
 import { BWToggle } from '@/components/BWToggle';
@@ -114,12 +117,34 @@ export function DailyTako() {
     return abortRef.current.signal;
   }
 
+  // Replay a cached example edition instantly — no API calls, just a quick "printing"
+  // beat before the paper is on screen.
+  function replayCached(b: string, newspaper: TNewspaper) {
+    abortRef.current?.abort();
+    dispatch({ type: 'RESET' });
+    setError(null); setActivity([]); setDeskToggle(null);
+    localStorage.setItem('tako-brief', b);
+    setBrief(b);
+    setPhase('printing');
+    dispatch({ type: 'COMPLETE', newspaper });
+    setTimeout(() => setPhase('reading'), 600);
+  }
+
   async function start(b: string) {
+    // Suggested example briefs are cached: replay instantly if we have a fresh one,
+    // otherwise generate once and cache the result for next time.
+    const cached = isExampleBrief(b) ? getCachedEdition(b) : null;
+    if (cached) {
+      replayCached(b, cached);
+      return;
+    }
     const signal = resetForRun();
     localStorage.setItem('tako-brief', b);
     setBrief(b);
+    let finalPaper: TNewspaper | null = null;
     try {
-      await streamGenerate(b, onEvent, signal);
+      await streamGenerate(b, (e) => { if (e.type === 'complete') finalPaper = e.newspaper; onEvent(e); }, signal);
+      if (finalPaper && isExampleBrief(b)) setCachedEdition(b, finalPaper);
     } catch (err) {
       if (!(err instanceof DOMException && err.name === 'AbortError')) {
         setError(err instanceof Error ? err.message : 'Something went wrong.');
