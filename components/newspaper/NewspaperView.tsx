@@ -4,6 +4,7 @@ import { AnimatePresence, motion } from 'framer-motion';
 import type { TPage } from '@/lib/schema';
 import type { SectionPlanItem } from '@/lib/stream/events';
 import { NewspaperPage } from './NewspaperPage';
+import { PaginatedReader } from './PaginatedReader';
 
 const PAGE_W = 600; // fixed page width; the whole spread is fit-scaled to the viewport
 
@@ -120,7 +121,9 @@ export function NewspaperView({ plan, pages, meta, building, bw }: {
 
   const portrait = cw < 720;
   const spreadW = (portrait ? PAGE_W : PAGE_W * 2) + 40;
-  const fit = Math.min(1.25, (cw - 8) / spreadW);
+  // Let the spread scale up toward broadsheet size when there's room (cap 1.5);
+  // the container max-width below is what actually bounds it on wide screens.
+  const fit = Math.min(1.5, (cw - 8) / spreadW);
   const zoom = Math.max(0.3, fit * mult);
 
   const jump = (slot: number) => setSpread(Math.floor(slot / 2));
@@ -128,11 +131,19 @@ export function NewspaperView({ plan, pages, meta, building, bw }: {
   const chipBase = 'font-mono-news inline-flex items-center gap-1.5 rounded-sm border px-2.5 py-0.5 text-[11px] uppercase tracking-wide transition-colors shadow-sm';
   const pill = 'border-[var(--ink)]/40 bg-[var(--paper)]/85 text-[var(--ink)] hover:bg-[var(--paper)]';
 
+  // Finished paper: hand off to the paginator, which lays the whole edition into
+  // identically-sized leaves and presents them as a two-up spread. The build phase
+  // below stays as-is (streaming skeletons), since pages arrive one at a time.
+  if (!building) {
+    const finished = pages.filter((p): p is TPage => Boolean(p));
+    if (finished.length > 0) return <PaginatedReader pages={finished} meta={meta} bw={bw} />;
+  }
+
   // Before the editor returns a plan there are no slots yet — show a clear
   // "planning" sheet instead of a fake skeleton page with a placeholder topic.
   if (building && slots.length === 0) {
     return (
-      <div className="flex w-full max-w-[1340px] flex-col items-center gap-3">
+      <div className="flex w-full max-w-[1560px] flex-col items-center gap-3">
         <div className="flex w-full justify-center">
           <div className={`spread-frame ${bw ? 'bw' : ''}`} style={{ zoom }}>
             <div className="flex" style={{ width: PAGE_W }}>
@@ -145,7 +156,7 @@ export function NewspaperView({ plan, pages, meta, building, bw }: {
   }
 
   return (
-    <div className="flex w-full max-w-[1340px] flex-col items-center gap-3">
+    <div className="flex w-full max-w-[1560px] flex-col items-center gap-3">
       {/* Control bar */}
       <div className="flex w-full flex-wrap items-center justify-between gap-2">
         <div className="flex flex-wrap items-center gap-1.5">
