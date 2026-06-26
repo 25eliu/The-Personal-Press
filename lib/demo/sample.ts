@@ -104,17 +104,14 @@ const PLAN = SAMPLE.pages.map((p, slot) => ({ topic: p.topic, slot }));
 // Canned Tako tool calls per section, with friendly labels matching toolLabel().
 const ACTIVITY: Record<number, { tool: string; label: string; detail: string }[]> = {
   0: [
-    { tool: 'tako_search', label: 'Using Tako search', detail: 'US stock market today' },
-    { tool: 'tako_answer', label: 'Asking Tako', detail: 'How did the S&P 500 close?' },
+    { tool: 'tako_search', label: 'Using Tako search', detail: 'S&P 500 close today' },
     { tool: 'tako_contents', label: 'Reading Tako data', detail: 'S&P 500 daily series' },
   ],
   1: [
-    { tool: 'tako_search', label: 'Using Tako search', detail: 'Federal Reserve interest rate' },
-    { tool: 'tako_answer', label: 'Asking Tako', detail: 'What is the effective federal funds rate?' },
+    { tool: 'tako_search', label: 'Using Tako search', detail: 'effective federal funds rate' },
   ],
   2: [
     { tool: 'tako_search', label: 'Using Tako search', detail: 'Premier League standings' },
-    { tool: 'tako_answer', label: 'Asking Tako', detail: 'Who leads the Premier League?' },
   ],
 };
 

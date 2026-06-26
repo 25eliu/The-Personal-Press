@@ -12,14 +12,12 @@ const findings: Findings = {
     sources: [{ source_name: 'St. Louis Fed', source_description: null, source_index: 'tako', url: '' }],
   }] as any,
   web: [{ title: 'Fed holds rates', url: 'https://bbc.com/x', snippet: 's', source_name: 'BBC' }] as any,
-  answers: ['The Fed held rates steady at 3.5–3.75%.'],
 };
 
-test('findingsContext includes card titles, web titles, and answers', () => {
+test('findingsContext includes card titles and web titles', () => {
   const ctx = findingsContext(findings);
   expect(ctx).toContain('US Federal Funds Rate');
   expect(ctx).toContain('Fed holds rates');
-  expect(ctx).toContain('held rates steady');
 });
 
 test('attachArt fills missing chart art from a title-matching card', () => {

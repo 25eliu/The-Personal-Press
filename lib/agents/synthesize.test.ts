@@ -46,7 +46,6 @@ test('synthInput surfaces publish_date and relevance', () => {
   const findings: Findings = {
     cards: [{ title: 'Rate', description: 'd', relevance: 'High', webpage_url: 'https://trytako.com/c/' }] as any,
     web: [{ title: 'Fed holds', snippet: 's', url: 'https://bbc.com/x', source_name: 'BBC', publish_date: '2026-06-24' }] as any,
-    answers: [],
   };
   const ctx = synthInput(findings);
   expect(ctx).toContain('2026-06-24');

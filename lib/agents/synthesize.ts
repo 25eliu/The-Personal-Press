@@ -55,7 +55,7 @@ export function synthInput(f: Findings): string {
     publish_date: w.publish_date ?? null,
     source: normalizeWebResult(w),
   }));
-  return JSON.stringify({ answers: f.answers, cards, web }, null, 2);
+  return JSON.stringify({ cards, web }, null, 2);
 }
 
 function synthSystem(today: TodayContext): string {

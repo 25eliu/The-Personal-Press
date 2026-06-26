@@ -5,8 +5,6 @@ export function toolLabel(tool: string): string {
   switch (tool) {
     case 'tako_search':
       return 'Using Tako search';
-    case 'tako_answer':
-      return 'Asking Tako';
     case 'tako_contents':
       return 'Reading Tako data';
     default:

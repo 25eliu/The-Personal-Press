@@ -25,6 +25,23 @@ export function shortSourceLabel(s: TSource): string {
 }
 
 /**
+ * Distinct sources by name+url, capped, order-preserving (first seen wins). Used to
+ * keep a chat answer's citation list tidy. Shared by every Tako-backed answer path.
+ */
+export function dedupeSources(sources: TSource[], cap = 6): TSource[] {
+  const seen = new Set<string>();
+  const out: TSource[] = [];
+  for (const s of sources) {
+    const key = `${s.name}|${s.url ?? ''}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(s);
+    if (out.length >= cap) break;
+  }
+  return out;
+}
+
+/**
  * Distinct, concise source labels discovered in a set of findings, capped so the
  * wire stays legible. Order-preserving (first seen wins), deduped case-insensitively.
  */

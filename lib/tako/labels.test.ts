@@ -1,9 +1,8 @@
 import { expect, test } from 'vitest';
 import { toolDetail, toolLabel } from '@/lib/tako/labels';
 
-test('toolLabel maps the three Tako tools to friendly labels', () => {
+test('toolLabel maps the Tako tools to friendly labels', () => {
   expect(toolLabel('tako_search')).toBe('Using Tako search');
-  expect(toolLabel('tako_answer')).toBe('Asking Tako');
   expect(toolLabel('tako_contents')).toBe('Reading Tako data');
 });
 

@@ -1,5 +1,36 @@
-import { WORD_CAPS } from '@/lib/config';
+import { BRAND, WORD_CAPS } from '@/lib/config';
 import { recencyInstruction, type TodayContext } from '@/lib/time/clock';
+
+/**
+ * Shared guidance on how to drive the Tako tools well — used by BOTH the reporter
+ * and the chat research desk so query discipline never forks. The search wrapper
+ * already makes every query time-aware (appends the year), so the model's job is to
+ * be SPECIFIC, not to remember the date.
+ */
+export function takoSearchGuidance(): string {
+  return `Using the Tako tools to gather REAL, sourced data:
+- Write SPECIFIC, entity-rich tako_search queries: subject + metric + scope
+  (e.g. "FIFA World Cup 2026 qualifiers standings", NOT just "FIFA"). A vague one-word
+  query returns Tako's evergreen "notable" card, which is often years out of date.
+- The current year is appended for you automatically — don't add it. DO name the exact
+  season / edition / period you want. Use an explicit PAST year only when you genuinely
+  want historical data.
+- Make one or two targeted tako_search calls, then call tako_contents with the best
+  card's webpage_url to pull its raw numbers (so a table can be built from them).
+- Prefer cards whose title/description match the live subject; ignore stale-looking ones.
+- NEVER invent facts. Everything must trace to a returned card or web result.`;
+}
+
+/**
+ * The chat research desk persona, shared by the streamed Q&A path. Takes the run's
+ * `today` so recency framing matches the rest of the request.
+ */
+export function askDeskSystem(today: TodayContext): string {
+  return `You are the research desk for "${BRAND}". Answer the question concisely and ` +
+    `factually using the Tako tools for live data and figures. Lead with the number or ` +
+    `finding. Never invent figures or sources — if Tako returns nothing usable, say so ` +
+    `plainly.\n\n${recencyInstruction(today)}\n\n${takoSearchGuidance()}`;
+}
 
 export const EDITOR_SYSTEM = `You are the editor-in-chief of a short, characterful daily newspaper.
 Given a reader's one-line brief, invent a fitting masthead name, a tagline, and an edition string,
@@ -26,19 +57,14 @@ export function reporterSystem(masthead: string, today: TodayContext): string {
   return `You are a reporter for "${masthead}", filing one newspaper page on a SINGLE ASSIGNED TOPIC.
 
 Your assigned topic is fixed. Stay strictly on it. Search Tako for the latest data ABOUT THIS
-TOPIC — include the current year for freshness — but NEVER substitute a different, more "current"
-story for the assigned one (e.g. if the topic is a league's transfer window, do not report a
-tournament happening at the same time).
+TOPIC — but NEVER substitute a different, more "current" story for the assigned one (e.g. if the
+topic is a league's transfer window, do not report a tournament happening at the same time).
 
 ${recencyInstruction(today)}
 
-Use the Tako tools to gather REAL, sourced data:
-- Prefer tako_search / tako_answer for any concrete data point (values, time series, prices,
-  scores, polls, forecasts). Use web results for narrative and context. Draw on BOTH Tako and
-  the web while researching, always within the assigned topic.
-- When a section benefits from raw numbers, call tako_contents with a card's webpage_url to pull
-  its data, then a table can be built from it.
-- NEVER invent facts. Everything you report must trace to a returned card, answer, or web result.
+${takoSearchGuidance()}
+Use web results for narrative and context, and pair them with Tako's hard numbers about the SAME
+story — always within the assigned topic.
 
 Be efficient: a few targeted tool calls are enough. After researching, stop; a separate step will
 typeset your findings into articles. Respect length: lead <= ${WORD_CAPS.lead} words,

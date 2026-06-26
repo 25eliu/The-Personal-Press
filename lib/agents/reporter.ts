@@ -27,7 +27,7 @@ export function findingsContext(f: Findings): string {
   const web = f.web.map((w) => ({
     title: w.title, snippet: w.snippet, publish_date: w.publish_date, source: normalizeWebResult(w),
   }));
-  return JSON.stringify({ answers: f.answers, cards, web }, null, 2);
+  return JSON.stringify({ cards, web }, null, 2);
 }
 
 function keywords(s: string): Set<string> {
@@ -133,7 +133,7 @@ export async function runReporter(
 ): Promise<TPage> {
   const { context, onActivity, onDraftToken, signal } = opts;
   try {
-    const tools = buildTakoTools();
+    const tools = buildTakoTools(today);
     logCall('reporter.start', { slot: isFront ? 0 : undefined, topic, model: MODEL });
 
     const { steps, usage } = await generateText({
@@ -159,9 +159,9 @@ export async function runReporter(
     const findings = collectFindings(steps);
     logCall('reporter.done', {
       topic, cards: findings.cards.length, web: findings.web.length,
-      answers: findings.answers.length, usage: usageSummary(usage),
+      usage: usageSummary(usage),
     });
-    if (findings.cards.length === 0 && findings.web.length === 0 && findings.answers.length === 0) {
+    if (findings.cards.length === 0 && findings.web.length === 0) {
       return emptyPage(topic);
     }
 
