@@ -161,7 +161,7 @@ export function PaginatedReader({ pages, meta, bw }: { pages: TPage[]; meta: Met
       if (!seen.has(lf.topicIndex)) {
         seen.set(lf.topicIndex, {
           topicIndex: lf.topicIndex,
-          label: lf.topicIndex === 0 ? 'Front' : lf.topic,
+          label: lf.topic,
           spread: Math.floor(i / 2),
         });
       }

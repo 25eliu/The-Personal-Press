@@ -190,7 +190,7 @@ export function NewspaperView({ plan, pages, meta, building, bw }: {
                     <span className="live-dot text-[var(--ink)]/45">●</span>
                   )
                 )}
-                {i === 0 ? 'Front' : topicFor(i)}
+                {topicFor(i)}
               </button>
             );
           })}
