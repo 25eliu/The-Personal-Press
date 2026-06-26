@@ -43,7 +43,7 @@ export function BuildStatus({
       initial={{ opacity: 0, y: -8 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.3 }}
-      className="paper-slip font-mono-news w-full max-w-[1340px] overflow-hidden rounded-sm border border-[var(--ink)]/30 px-3 py-2"
+      className="paper-slip font-mono-news w-full max-w-[1560px] overflow-hidden rounded-sm border border-[var(--ink)]/30 px-3 py-2"
     >
       <div className="flex items-center gap-3">
         {/* Stage badge */}

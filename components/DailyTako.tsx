@@ -163,7 +163,7 @@ export function DailyTako() {
       {phase !== 'idle' && <div className="fixed inset-0 -z-10 bg-black/10" />}
 
       {phase !== 'idle' && (
-        <div className="flex w-full max-w-[1340px] items-center justify-between">
+        <div className="flex w-full max-w-[1560px] items-center justify-between">
           <button
             onClick={() => { abortRef.current?.abort(); setPhase('idle'); }}
             className="font-mono-news rounded-sm border border-[var(--ink)]/40 bg-[var(--paper)]/85 px-2.5 py-1 text-xs uppercase tracking-widest text-[var(--ink)] shadow-sm transition-colors hover:bg-[var(--paper)]"
@@ -195,7 +195,7 @@ export function DailyTako() {
       {phase !== 'idle' && (
         <CopilotKit runtimeUrl="/api/copilotkit" showDevConsole={false}>
           {building && (
-            <div className="flex w-full max-w-[1340px] flex-col items-center gap-2">
+            <div className="flex w-full max-w-[1560px] flex-col items-center gap-2">
               <WireTicker items={activity} />
               <BuildStatus
                 stage={stage}
