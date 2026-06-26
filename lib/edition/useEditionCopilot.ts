@@ -6,6 +6,7 @@ import type { TArticle } from '@/lib/schema';
 import { validateArticlePatch, validatePage } from '@/lib/edition/validate';
 import { hasRealContent } from '@/lib/agents/reporter';
 import { streamEditSection } from '@/lib/stream/editClient';
+import { sectionToContext } from '@/lib/edition/grounding';
 import { streamAskTako } from '@/lib/stream/askClient';
 import type { AskSource } from '@/lib/stream/askEvents';
 import { ResearchProgress } from '@/components/copilot/ResearchProgress';
@@ -65,13 +66,15 @@ export function useEditionCopilot(
 
   const editSignal = () => abortRef.current?.signal;
 
-  const runResearch = async (topic: string, isFront: boolean) => {
+  const runResearch = async (topic: string, isFront: boolean, context?: string) => {
     resetResearch();
     return streamEditSection(
-      { topic, isFront },
+      { topic, isFront, context },
       (e) => {
         if (e.type === 'tool_activity') {
           setResearchLines((prev) => [...prev, e.detail ? `${e.label} — “${e.detail}”` : e.label]);
+        } else if (e.type === 'token') {
+          setResearchAnswer((prev) => prev + e.text);    // streams the forming section into the chat bubble
         } else if (e.type === 'error') {
           setResearchDone(`⚠ ${e.message}`);
         }
@@ -324,9 +327,12 @@ export function useEditionCopilot(
     parameters: [
       { name: 'topic', type: 'string', description: 'The section topic to research and add.', required: true },
       { name: 'position', type: 'number', description: 'Optional page position; defaults to the end.', required: false },
+      { name: 'groundingSlot', type: 'number', description: 'If the request refers to or builds on an existing section, its slot — so the research is grounded in that coverage.', required: false },
     ],
-    handler: async ({ topic, position }) => {
-      const page = await runResearch(topic, false);
+    handler: async ({ topic, position, groundingSlot }) => {
+      const src = typeof groundingSlot === 'number' ? stateRef.current.pages[groundingSlot] : undefined;
+      const context = src ? sectionToContext(src) : undefined;
+      const page = await runResearch(topic, false, context);
       if (!page) return `No fresh reporting found for “${topic}”.`;
       const v = validatePage(page);
       if (!v.ok) return v.error;
@@ -358,7 +364,7 @@ export function useEditionCopilot(
     handler: async ({ slot, topic }) => {
       const page = stateRef.current.pages[slot];
       if (!page) return `No section at slot ${slot}.`;
-      const fresh = await runResearch(topic, slot === 0);
+      const fresh = await runResearch(topic, slot === 0, sectionToContext(page));
       if (!fresh) return `No fresh reporting found for “${topic}”.`;
       const v = validatePage(fresh);
       if (!v.ok) return v.error;
