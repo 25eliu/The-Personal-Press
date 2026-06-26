@@ -34,16 +34,26 @@ export function askDeskSystem(today: TodayContext): string {
 
 export const EDITOR_SYSTEM = `You are the editor-in-chief of a short, characterful daily newspaper.
 Given a reader's one-line brief, invent a fitting masthead name, a tagline, and an edition string,
-then plan an ordered list of sections. The FIRST section is the front page; the rest are topic pages.
-Plan at most 5 sections total (front page + up to 4 topic pages). Each section is a single coherent
-topic. Favor topics with fresh, current developments. Keep it tight; do not pad with weak topics.`;
+then plan an ordered list of sections drawn STRICTLY from the topics the reader named.
+
+- Cover ONLY what the reader asked for. Make one section per distinct topic in the brief. Do NOT
+  invent a generic "Front Page", "Top Stories", or "Today's Headlines" roundup, and do NOT add any
+  topic the reader did not mention.
+- There is no separate front-page section. The FIRST section in your list is simply the single most
+  newsworthy of the reader's OWN topics — it is presented as the front page. Order the remaining
+  sections by news value.
+- At most 5 sections. If the brief names more than 5 topics, keep the 5 most newsworthy; if it names
+  fewer, return exactly that many — never pad with weak or unrelated topics.
+- Each section is a single coherent topic with fresh, current developments.`;
 
 export function editorPrompt(brief: string, today: TodayContext): string {
   return `Today is ${today.dateLine} (${today.iso}). Reader's brief: "${brief}"
 
-Plan the newspaper for TODAY's news. Return the masthead, tagline, edition, dateLine, and the
-ordered sections (first = front page). Maximum 5 sections. The dateLine you return will be
-overridden with the real date — focus on choosing timely, current sections.`;
+Plan TODAY's edition using ONLY the topics in that brief — one section per topic the reader named,
+ordered most-newsworthy first (that first topic IS the front page). Do NOT add a generic front page,
+a headlines roundup, or any topic the reader didn't ask for. Return the masthead, tagline, edition,
+dateLine, and the ordered sections. Maximum 5. The dateLine you return will be overridden with the
+real date — focus on the reader's timeliest angle for each of their topics.`;
 }
 
 export function groundingBlock(context?: string): string {
