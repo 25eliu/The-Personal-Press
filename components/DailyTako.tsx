@@ -7,6 +7,7 @@ import { playDemo } from '@/lib/demo/sample';
 import { BriefInput } from '@/components/BriefInput';
 import { BWToggle } from '@/components/BWToggle';
 import { WireTicker, type ActivityItem } from '@/components/build/WireTicker';
+import { BuildStatus, type BuildStage } from '@/components/build/BuildStatus';
 import { NewspaperView } from '@/components/newspaper/NewspaperView';
 import { CopilotKit } from '@copilotkit/react-core';
 import { CopilotBridge } from '@/components/copilot/CopilotBridge';
@@ -42,6 +43,13 @@ export function DailyTako() {
   const activityId = useRef(0);
 
   const building = phase === 'typesetting' || phase === 'printing';
+
+  // Plain-language build telemetry for the press console.
+  const pagesTotal = plan.length;
+  const pagesDone = pages.filter(Boolean).length;
+  const takoCount = activity.filter((a) => a.kind === 'tako').length;
+  const stage: BuildStage =
+    phase === 'printing' ? 'printing' : pagesTotal === 0 ? 'planning' : 'typesetting';
 
   useEffect(() => {
     setBw(localStorage.getItem('tako-bw') === 'true');
@@ -154,7 +162,20 @@ export function DailyTako() {
 
       {phase !== 'idle' && (
         <CopilotKit runtimeUrl="/api/copilotkit" showDevConsole={false}>
-          {building && <WireTicker items={activity} />}
+          {building && (
+            <div className="flex w-full max-w-[1340px] flex-col items-center gap-2">
+              <WireTicker items={activity} />
+              <BuildStatus
+                stage={stage}
+                done={pagesDone}
+                total={pagesTotal}
+                takoCount={takoCount}
+                masthead={meta.masthead}
+                dateLine={meta.dateLine}
+                brief={brief}
+              />
+            </div>
+          )}
           <NewspaperView plan={plan} pages={pages} meta={meta} building={building} bw={bw} />
           {/* Editing only once the paper has finished printing, so edits can't race
               the generation stream's dispatches into the same reducer. */}

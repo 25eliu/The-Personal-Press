@@ -11,16 +11,47 @@ type Meta = { masthead: string; tagline: string; edition: string; dateLine: stri
 
 function SkeletonPage({ topic }: { topic: string }) {
   return (
-    <div className="paper shimmer-bars flex w-full flex-col gap-2 px-6 py-6" style={{ minHeight: 560 }}>
-      <div className="h-7 w-3/4 bg-black/80" />
-      <div className="h-3 w-1/3 bg-black/40" />
-      <div className="mt-2 h-32 w-full border border-black/50 bg-black/5" />
-      {Array.from({ length: 12 }).map((_, i) => (
-        <div key={i} className="h-2.5 w-full bg-black/15" />
-      ))}
+    <div className="paper press-sweep relative flex w-full flex-col gap-2 overflow-hidden px-6 py-6" style={{ minHeight: 560 }}>
+      <div className="shimmer-bars flex flex-col gap-2">
+        <div className="h-7 w-3/4 bg-black/80" />
+        <div className="h-3 w-1/3 bg-black/40" />
+        <div className="mt-2 h-32 w-full border border-black/50 bg-black/5" />
+        {Array.from({ length: 12 }).map((_, i) => (
+          <div key={i} className="h-2.5 bg-black/15" style={{ width: `${100 - (i % 4) * 8}%` }} />
+        ))}
+      </div>
       <p className="font-mono-news mt-auto flex items-center justify-center gap-2 pt-2 text-center text-[10px] uppercase tracking-widest text-black/55">
-        <span className="live-dot text-[var(--accent)]">●</span> Setting type — {topic}
+        <span className="live-dot text-[var(--accent)]">●</span> Reporting &amp; setting type — {topic}
       </p>
+    </div>
+  );
+}
+
+/** Shown before the editor has planned the sections — makes the "planning" wait legible. */
+function PlanningSheet() {
+  return (
+    <div className="paper press-sweep relative flex w-full flex-col items-center justify-center gap-4 overflow-hidden px-8 py-16 text-center" style={{ minHeight: 560 }}>
+      <motion.div
+        animate={{ rotate: [0, -8, 8, 0] }}
+        transition={{ duration: 2.4, repeat: Infinity, ease: 'easeInOut' }}
+        className="text-5xl"
+      >
+        🐙
+      </motion.div>
+      <h2 className="font-masthead text-3xl text-[var(--ink)]">Planning today’s edition</h2>
+      <p className="font-mono-news max-w-sm text-[12px] uppercase tracking-[0.18em] text-[var(--ink)]/55">
+        The editor is reading your brief and assigning reporters to the day’s sections…
+      </p>
+      <div className="mt-2 flex gap-1.5">
+        {[0, 1, 2].map((i) => (
+          <motion.span
+            key={i}
+            className="h-2 w-2 rounded-full bg-[var(--accent)]"
+            animate={{ opacity: [0.25, 1, 0.25] }}
+            transition={{ duration: 1.1, repeat: Infinity, delay: i * 0.18 }}
+          />
+        ))}
+      </div>
     </div>
   );
 }
@@ -94,27 +125,53 @@ export function NewspaperView({ plan, pages, meta, building, bw }: {
 
   const jump = (slot: number) => setSpread(Math.floor(slot / 2));
 
-  const chipBase = 'font-mono-news rounded-sm border px-2.5 py-0.5 text-[11px] uppercase tracking-wide transition-colors shadow-sm';
+  const chipBase = 'font-mono-news inline-flex items-center gap-1.5 rounded-sm border px-2.5 py-0.5 text-[11px] uppercase tracking-wide transition-colors shadow-sm';
   const pill = 'border-[var(--ink)]/40 bg-[var(--paper)]/85 text-[var(--ink)] hover:bg-[var(--paper)]';
+
+  // Before the editor returns a plan there are no slots yet — show a clear
+  // "planning" sheet instead of a fake skeleton page with a placeholder topic.
+  if (building && slots.length === 0) {
+    return (
+      <div className="flex w-full max-w-[1340px] flex-col items-center gap-3">
+        <div className="flex w-full justify-center">
+          <div className={`spread-frame ${bw ? 'bw' : ''}`} style={{ zoom }}>
+            <div className="flex" style={{ width: PAGE_W }}>
+              <PlanningSheet />
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="flex w-full max-w-[1340px] flex-col items-center gap-3">
       {/* Control bar */}
       <div className="flex w-full flex-wrap items-center justify-between gap-2">
         <div className="flex flex-wrap items-center gap-1.5">
-          {slots.map((i) => (
-            <button
-              key={i}
-              onClick={() => jump(i)}
-              className={`${chipBase} ${
-                Math.floor(i / 2) === cur
-                  ? 'border-[var(--ink)] bg-[var(--ink)] text-[var(--paper)]'
-                  : pill
-              }`}
-            >
-              {i === 0 ? 'Front' : topicFor(i)}
-            </button>
-          ))}
+          {slots.map((i) => {
+            const ready = Boolean(pages[i]);
+            return (
+              <button
+                key={i}
+                onClick={() => jump(i)}
+                className={`${chipBase} ${
+                  Math.floor(i / 2) === cur
+                    ? 'border-[var(--ink)] bg-[var(--ink)] text-[var(--paper)]'
+                    : pill
+                }`}
+              >
+                {building && (
+                  ready ? (
+                    <span className="text-[var(--accent)]">✓</span>
+                  ) : (
+                    <span className="live-dot text-[var(--accent)]">●</span>
+                  )
+                )}
+                {i === 0 ? 'Front' : topicFor(i)}
+              </button>
+            );
+          })}
         </div>
         <div className="font-mono-news flex items-center gap-1 text-[11px]">
           <button onClick={() => setMult((m) => Math.max(0.6, +(m - 0.2).toFixed(2)))} className={`h-6 w-6 rounded-sm border shadow-sm ${pill}`} aria-label="Zoom out">−</button>

@@ -77,6 +77,41 @@ body {
 @keyframes shimmer { 0%, 100% { opacity: 0.45; } 50% { opacity: 0.85; } }
 .shimmer-bars > * { animation: shimmer 1.3s ease-in-out infinite; }
 
+/* "Press sweep": an ink roller passing over the type being set. A diagonal sheen
+   travels across the skeleton/planning sheet — reads as printing, not as broken. */
+@keyframes press-sweep {
+  0% { transform: translateX(-130%) skewX(-12deg); }
+  100% { transform: translateX(130%) skewX(-12deg); }
+}
+.press-sweep::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: linear-gradient(
+    100deg,
+    transparent 30%,
+    rgba(192, 52, 29, 0.06) 45%,
+    rgba(0, 0, 0, 0.10) 50%,
+    rgba(192, 52, 29, 0.06) 55%,
+    transparent 70%
+  );
+  animation: press-sweep 1.8s ease-in-out infinite;
+}
+
+/* Progress track + indeterminate "barber pole" fill for the press console. */
+.press-track { background: rgba(20, 17, 13, 0.12); }
+@keyframes press-barber { 0% { background-position: 0 0; } 100% { background-position: 28px 0; } }
+.press-barber {
+  background-image: repeating-linear-gradient(
+    -45deg,
+    var(--accent) 0, var(--accent) 7px,
+    rgba(192, 52, 29, 0.4) 7px, rgba(192, 52, 29, 0.4) 14px
+  );
+  background-size: 28px 28px;
+  animation: press-barber 0.7s linear infinite;
+}
+
 /* Slim, rounded "pill" scrollbar for the reading spread. */
 .news-scroll { scrollbar-width: thin; scrollbar-color: rgba(20, 17, 13, 0.45) transparent; }
 .news-scroll::-webkit-scrollbar { width: 9px; height: 9px; }
