@@ -347,6 +347,7 @@ export function useEditionCopilot(
         title: `Researching: ${args?.topic ?? '…'}`,
         lines: researchLines,
         sources: researchSources,
+        answer: researchAnswer,
         done: status === 'complete' ? researchDone ?? 'Done.' : undefined,
       }),
   });
@@ -379,6 +380,8 @@ export function useEditionCopilot(
       createElement(ResearchProgress, {
         title: `Re-researching: ${args?.topic ?? '…'}`,
         lines: researchLines,
+        sources: researchSources,
+        answer: researchAnswer,
         done: status === 'complete' ? researchDone ?? 'Done.' : undefined,
       }),
   });

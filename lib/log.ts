@@ -10,7 +10,6 @@ export type LogKind =
   | 'tool.call'
   | 'synthesize.start'
   | 'synthesize.done'
-  | 'synthesize.fallback'
   | 'distill.start'
   | 'distill.done'
   | 'ask.start'
