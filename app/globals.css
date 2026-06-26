@@ -9,6 +9,8 @@
   --paper: #f4efe2;
   --ink: #14110d;
   --accent: #c0341d; /* printer's vermilion */
+  --copydesk-w: 27rem; /* Copy Desk panel width; the press floor reserves this when open */
+  --copydesk-ease: cubic-bezier(0.22, 1, 0.36, 1); /* shared with the desk's slide-in */
   /* Your background art (public/background.jpg). Falls back to the placeholder
      SVG, then a wood gradient, if the file is ever missing. */
   --desk-image: url('/background.jpg');
@@ -196,7 +198,7 @@ cpk-web-inspector { display: none !important; }
 /* The panel itself: a cream paper slip with a torn ink edge, pressed
    onto the desk with a deep drop shadow. */
 .copilotKitSidebar .copilotKitWindow {
-  width: 27rem;
+  width: var(--copydesk-w);
   background-color: var(--paper);
   background-image:
     radial-gradient(rgba(0, 0, 0, 0.035) 1px, transparent 1px),
@@ -207,8 +209,25 @@ cpk-web-inspector { display: none !important; }
   box-shadow: -18px 0 52px rgba(0, 0, 0, 0.5);
 }
 @media (min-width: 640px) {
-  .copilotKitSidebar .copilotKitWindow { width: 27rem; }
-  .copilotKitSidebarContentWrapper.sidebarExpanded { margin-right: 27rem; }
+  .copilotKitSidebar .copilotKitWindow { width: var(--copydesk-w); }
+}
+
+/* THE PRESS FLOOR SLIDE.
+   The Copy Desk is a fixed panel on the right. Rather than let it cover the
+   spread, the whole press floor (chrome + newspaper) slides left to reserve
+   exactly the desk's width — one motion, same easing + duration as the desk's
+   own slide-in, so paper and desk move as a synchronized pair. The newspaper's
+   ResizeObserver re-fits the zoom as the floor narrows, so the full spread stays
+   visible. Below 640px the desk is a full-screen overlay, so we don't shift. */
+.press-floor {
+  transition: padding-right 0.55s var(--copydesk-ease);
+  will-change: padding-right;
+}
+@media (min-width: 640px) {
+  .press-floor[data-desk-open='true'] { padding-right: var(--copydesk-w); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .press-floor { transition: none; }
 }
 
 /* Slide-in like a paper slip dealt onto the desk, with a tiny settle. */

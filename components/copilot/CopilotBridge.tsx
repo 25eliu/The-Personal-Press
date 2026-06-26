@@ -15,11 +15,13 @@ export function CopilotBridge({
   dispatch,
   abortRef,
   showSidebar,
+  onOpenChange,
 }: {
   edition: EditionState;
   dispatch: Dispatch<EditionAction>;
   abortRef: RefObject<AbortController | null>;
   showSidebar: boolean;
+  onOpenChange?: (open: boolean) => void;
 }) {
   useEditionCopilot(edition, dispatch, abortRef);
   // The sidebar mounts only once the paper has finished printing (showSidebar =
@@ -31,6 +33,7 @@ export function CopilotBridge({
       instructions={HOUSE_STYLE}
       defaultOpen
       clickOutsideToClose={false}
+      onSetOpen={onOpenChange}
       labels={{
         title: 'The Copy Desk',
         initial:

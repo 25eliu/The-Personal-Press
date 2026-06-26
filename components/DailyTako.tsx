@@ -41,8 +41,15 @@ export function DailyTako() {
   const [error, setError] = useState<string | null>(null);
   const abortRef = useRef<AbortController | null>(null);
   const activityId = useRef(0);
+  // The user's explicit Copy Desk toggle, or null before they've touched it.
+  // Derived `deskOpen` below: open while reading unless the reader closed it.
+  // Kept as an override (not a synced effect) so no setState-in-effect is needed.
+  const [deskToggle, setDeskToggle] = useState<boolean | null>(null);
 
   const building = phase === 'typesetting' || phase === 'printing';
+  // The desk is only present while reading; it auto-opens (defaultOpen) unless the
+  // reader has closed it. This drives the press floor sliding left to make room.
+  const deskOpen = phase === 'reading' && (deskToggle ?? true);
 
   // Plain-language build telemetry for the press console.
   const pagesTotal = plan.length;
@@ -102,7 +109,7 @@ export function DailyTako() {
   function resetForRun() {
     abortRef.current?.abort();
     dispatch({ type: 'RESET' });
-    setError(null); setActivity([]); setPhase('typesetting');
+    setError(null); setActivity([]); setPhase('typesetting'); setDeskToggle(null);
     abortRef.current = new AbortController();
     return abortRef.current.signal;
   }
@@ -126,7 +133,7 @@ export function DailyTako() {
   }
 
   return (
-    <main className="relative flex min-h-screen flex-col items-center gap-4 p-5">
+    <main className="press-floor relative flex min-h-screen flex-col items-center gap-4 p-5" data-desk-open={deskOpen}>
       {/* Very light scrim so cream pages pop without hiding the desk. */}
       {phase !== 'idle' && <div className="fixed inset-0 -z-10 bg-black/10" />}
 
@@ -184,6 +191,7 @@ export function DailyTako() {
             dispatch={dispatch}
             abortRef={abortRef}
             showSidebar={phase === 'reading'}
+            onOpenChange={setDeskToggle}
           />
         </CopilotKit>
       )}
