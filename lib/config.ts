@@ -1,4 +1,4 @@
-export const MODEL = 'gpt-4.1';
+export const MODEL = 'gpt-5.4-mini';
 
 /** The newspaper's fixed brand / masthead. */
 export const BRAND = 'The Personal Press';
