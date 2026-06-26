@@ -1,0 +1,4 @@
+# Never upload local env files to Vercel builds.
+# Production keys live in Vercel project env settings (encrypted), not in the repo.
+.env
+.env.*
