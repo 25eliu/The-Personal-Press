@@ -35,10 +35,10 @@ export function todayContext(now: Date = new Date()): TodayContext {
 
 /** Shared instruction block injected into every research-facing system prompt. */
 export function recencyInstruction(today: TodayContext): string {
-  return `Today is ${today.dateLine} (${today.iso}). Report the LATEST available data and ` +
-    `strongly prefer sources from the last ${today.windowDays} days. Frame every Tako/web ` +
-    `query for current/latest values — include the current year and words like "latest" or ` +
-    `"today". Never present old data as if it were current.`;
+  return `Today is ${today.dateLine} (${today.iso}). When a value can change over time, ` +
+    `prefer the most recent sources (within the last ${today.windowDays} days where possible) ` +
+    `and include the current year in searches so results are current. Never present old data ` +
+    `as if it were today's.`;
 }
 
 // Re-exported for prompt builders that already import from one place.
