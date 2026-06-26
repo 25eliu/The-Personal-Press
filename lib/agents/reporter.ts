@@ -5,13 +5,18 @@ import { Page, type TPage } from '@/lib/schema';
 import { groundingBlock, reporterSystem } from '@/lib/agents/prompts';
 import { buildTakoTools, collectFindings, type Findings } from '@/lib/tako/tools';
 import { normalizeCardSources, normalizeWebResult, validUrl } from '@/lib/tako/normalize';
+import { findingSourceLabels } from '@/lib/tako/sources';
 import { toolDetail, toolLabel } from '@/lib/tako/labels';
 import type { TodayContext } from '@/lib/time/clock';
 import { clip, logCall, usageSummary } from '@/lib/log';
 import { draftFromPartial } from '@/lib/agents/draft';
 
-/** A single Tako tool call surfaced to the UI ("Using Tako search…"). */
-export type ReporterActivity = { tool: string; label: string; detail?: string };
+/**
+ * A line of newsroom activity surfaced to the UI: a Tako tool call ("Using Tako
+ * search…"), or — when a step returns data — the concrete outlets it pulled from
+ * ("Sourced from", carrying `sources`). One channel keeps the wire ordered.
+ */
+export type ReporterActivity = { tool: string; label: string; detail?: string; sources?: string[] };
 
 export function findingsContext(f: Findings): string {
   const cards = f.cards.map((c) => ({
@@ -145,6 +150,9 @@ export async function runReporter(
           logCall('tool.call', { topic, tool, detail: clip(detail) });
           onActivity?.({ tool, label: toolLabel(tool), detail });
         }
+        // Surface the SPECIFIC outlets this step pulled from, the moment they land.
+        const labels = findingSourceLabels(collectFindings([step]));
+        if (labels.length > 0) onActivity?.({ tool: 'sources', label: 'Sourced from', sources: labels });
       },
     });
 

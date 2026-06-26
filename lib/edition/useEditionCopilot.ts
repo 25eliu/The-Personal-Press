@@ -72,7 +72,9 @@ export function useEditionCopilot(
       { topic, isFront, context },
       (e) => {
         if (e.type === 'tool_activity') {
-          setResearchLines((prev) => [...prev, e.detail ? `${e.label} — “${e.detail}”` : e.label]);
+          // A 'sources' dispatch feeds the outlet chips; a real tool call feeds the log.
+          if (e.sources?.length) mergeSources(e.sources);
+          else setResearchLines((prev) => [...prev, e.detail ? `${e.label} — “${e.detail}”` : e.label]);
         } else if (e.type === 'token') {
           setResearchAnswer((prev) => prev + e.text);    // streams the forming section into the chat bubble
         } else if (e.type === 'error') {

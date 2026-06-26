@@ -12,7 +12,7 @@ export type GenerateEvent =
       plan: SectionPlanItem[];
     }
   | { type: 'section_started'; slot: number; topic: string }
-  | { type: 'tool_activity'; slot: number; topic: string; tool: string; label: string; detail?: string }
+  | { type: 'tool_activity'; slot: number; topic: string; tool: string; label: string; detail?: string; sources?: string[] }
   | { type: 'section_done'; slot: number; page: TPage }
   | { type: 'token'; slot: number; text: string }
   | { type: 'error'; slot?: number; message: string }

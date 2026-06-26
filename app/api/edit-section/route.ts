@@ -48,7 +48,7 @@ export async function POST(req: Request) {
         safeEnqueue({ type: 'section_started', slot: 0, topic });
         const page = await runReporter(topic, isFront, BRAND, todayContext(), {
           context,
-          onActivity: (a) => safeEnqueue({ type: 'tool_activity', slot: 0, topic, tool: a.tool, label: a.label, detail: a.detail }),
+          onActivity: (a) => safeEnqueue({ type: 'tool_activity', slot: 0, topic, tool: a.tool, label: a.label, detail: a.detail, sources: a.sources }),
           onDraftToken: (t) => safeEnqueue({ type: 'token', slot: 0, text: t }),
           signal,
         });

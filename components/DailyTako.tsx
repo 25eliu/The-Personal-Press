@@ -94,7 +94,7 @@ export function DailyTako() {
     } else if (e.type === 'tool_activity') {
       setActivity((prev) => [
         ...prev,
-        { id: activityId.current++, kind: 'tako', slot: e.slot, topic: e.topic, label: e.label, detail: e.detail },
+        { id: activityId.current++, kind: 'tako', slot: e.slot, topic: e.topic, label: e.label, detail: e.detail, sources: e.sources },
       ]);
     } else if (e.type === 'section_done') {
       dispatch({ type: 'SET_SECTION', slot: e.slot, page: e.page });

@@ -9,7 +9,24 @@ export type ActivityItem = {
   topic?: string;
   label: string;
   detail?: string;
+  sources?: string[];
 };
+
+/** Distinct outlet labels seen across the wire so far (order-preserving, capped). */
+function distinctSources(items: ActivityItem[], cap = 12): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const item of items) {
+    for (const s of item.sources ?? []) {
+      const key = s.toLowerCase();
+      if (seen.has(key)) continue;
+      seen.add(key);
+      out.push(s);
+      if (out.length >= cap) return out;
+    }
+  }
+  return out;
+}
 
 /**
  * A newsroom "wire" ticker that announces each Tako tool call as the agents
@@ -18,6 +35,7 @@ export type ActivityItem = {
 export function WireTicker({ items }: { items: ActivityItem[] }) {
   const latest = items.length > 0 ? items[items.length - 1] : null;
   const takoCount = items.filter((i) => i.kind === 'tako').length;
+  const sources = distinctSources(items);
   return (
     <div className="ticker font-mono-news w-full max-w-[1560px] overflow-hidden rounded-sm border border-black/70 shadow-lg">
       <div className="flex h-10 items-stretch">
@@ -58,6 +76,24 @@ export function WireTicker({ items }: { items: ActivityItem[] }) {
           Powered by Tako
         </div>
       </div>
+
+      {/* Accumulating rail of the SPECIFIC outlets the newsroom is pulling from.
+          The ticker line above flashes each dispatch by; this keeps the sources. */}
+      {sources.length > 0 && (
+        <div className="flex flex-wrap items-center gap-1.5 border-t border-[var(--paper)]/15 px-3 py-1.5">
+          <span className="mr-0.5 text-[9px] uppercase tracking-[0.18em] text-[var(--paper)]/45">
+            Sourced from
+          </span>
+          {sources.map((s) => (
+            <span
+              key={s}
+              className="rounded-sm border border-[var(--paper)]/25 bg-[var(--paper)]/8 px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-[var(--paper)]/85"
+            >
+              {s}
+            </span>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
