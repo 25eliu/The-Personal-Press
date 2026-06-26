@@ -13,6 +13,7 @@ import {
 } from '@/lib/newspaper/leafLayout';
 import { BlockView } from './BlockView';
 import { Masthead } from './Masthead';
+import { useLiveEdit } from '@/lib/edition/liveEdit';
 
 type Meta = { masthead: string; tagline: string; edition: string; dateLine: string };
 
@@ -43,18 +44,28 @@ function JumpLine({ children }: { children: React.ReactNode }) {
 function Column({ blocks, topJump, bottomJump }: {
   blocks: Block[]; topJump?: React.ReactNode; bottomJump?: React.ReactNode;
 }) {
+  // After a whole-section replace commits, the new section streams in: every block rises
+  // in reading order (a running per-column stagger) so the page prints itself line by line
+  // in its FINAL layout — no hard swap, no end-of-run repaginate.
+  const live = useLiveEdit();
+  let revealIdx = 0;
   return (
     <div className="flex flex-col" style={{ width: COL_W }}>
       {topJump}
-      {blocks.map((b, i) => (
-        <div
-          key={b.id}
-          style={{ marginBottom: BLOCK_GAP }}
-          className={i > 0 && b.kind === 'head' ? 'border-t border-black/35 pt-2' : undefined}
-        >
-          <BlockView block={b} />
-        </div>
-      ))}
+      {blocks.map((b, i) => {
+        const rising = live.revealSlot === b.topicIndex;
+        const delay = rising ? Math.min(revealIdx++ * 55, 700) : 0;
+        const rule = i > 0 && b.kind === 'head' ? 'border-t border-black/35 pt-2' : '';
+        return (
+          <div
+            key={b.id}
+            style={{ marginBottom: BLOCK_GAP, animationDelay: rising ? `${delay}ms` : undefined }}
+            className={`${rule}${rising ? ' live-edit-rise' : ''}` || undefined}
+          >
+            <BlockView block={b} />
+          </div>
+        );
+      })}
       {bottomJump}
     </div>
   );
@@ -66,6 +77,14 @@ function Column({ blocks, topJump, bottomJump }: {
  * are separated by a hairline rule, and a folio sits at the foot of the page.
  */
 export function Leaf({ leaf, meta }: { leaf: LeafModel; meta: Meta }) {
+  // A whole-section replace clears the section's running head too (not just its stories),
+  // then rises the new topic in on commit — so the header is part of "delete everything,
+  // rewrite everything". The front-page masthead (the paper's identity) is left intact.
+  const live = useLiveEdit();
+  const sectionErasing =
+    live.phase !== 'idle' && live.sectionScope && live.slot === leaf.topicIndex && !leaf.isFront;
+  const sectionRising = live.revealSlot === leaf.topicIndex && !leaf.isFront;
+
   const toJump = leaf.continuesToNext && leaf.continuedToPage != null
     ? <JumpLine>Continued on page {leaf.continuedToPage} ▸</JumpLine>
     : undefined;
@@ -78,7 +97,11 @@ export function Leaf({ leaf, meta }: { leaf: LeafModel; meta: Meta }) {
       className="paper relative flex flex-col"
       style={{ width: LEAF_W, height: LEAF_H, paddingLeft: PAD_X, paddingRight: PAD_X, paddingTop: PAD_TOP, paddingBottom: PAD_BOTTOM }}
     >
-      <div style={{ marginBottom: HEADER_GAP }}>
+      <div
+        style={{ marginBottom: HEADER_GAP }}
+        // Hidden (height preserved) while the section erases; risen with the new topic on reveal.
+        className={`${sectionErasing ? 'opacity-0' : ''}${sectionRising ? 'live-edit-rise' : ''}` || undefined}
+      >
         {leaf.isFront ? (
           <Masthead {...meta} />
         ) : (

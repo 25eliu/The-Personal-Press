@@ -55,12 +55,13 @@ export function DailyTako() {
   // The desk is only present while reading; it auto-opens (defaultOpen) unless the
   // reader has closed it. This drives the press floor sliding left to make room.
   const deskOpen = phase === 'reading' && (deskToggle ?? true);
-  // How the press floor reserves the Copy Desk's horizontal space. The reserve total
-  // is the SAME while loading and reading, so the spread's size never changes — only
-  // its position: centred while printing ('loading'), shifted left once the desk
-  // reveals ('desk-open'). Closing the desk releases the reserve ('full').
-  const floorState: 'idle' | 'loading' | 'desk-open' | 'full' =
-    phase === 'idle' ? 'idle' : building ? 'loading' : deskOpen ? 'desk-open' : 'full';
+  // The press floor reserves the right gutter the WHOLE time the paper is on screen —
+  // while building (the Tako Wire + press console live there) AND while reading (the
+  // Copy Desk lives there). So the paper holds one fixed position/size from the first
+  // printed frame through finish: it never re-centres or jumps. Closing the desk while
+  // reading releases the reserve ('full') so the paper can expand.
+  const floorState: 'idle' | 'desk-open' | 'full' =
+    phase === 'idle' ? 'idle' : building || deskOpen ? 'desk-open' : 'full';
 
   // Plain-language build telemetry for the press console.
   const pagesTotal = plan.length;
@@ -209,7 +210,14 @@ export function DailyTako() {
         <LiveEditProvider>
         <CopilotKit runtimeUrl="/api/copilotkit" showDevConsole={false}>
           {building && (
-            <div className="flex w-full max-w-[1560px] flex-col items-center gap-2">
+            // The build chrome lives in the SAME right gutter the Copy Desk will occupy
+            // (fixed, vertically centred, one desk-width wide) instead of stacked above
+            // the paper — so it never pushes the spread down. When printing finishes it
+            // fades and the desk slides into the very same slot; the paper doesn't budge.
+            <div
+              className="fixed top-1/2 z-30 flex max-h-[90vh] -translate-y-1/2 flex-col gap-2 overflow-y-auto"
+              style={{ right: 'var(--copydesk-gap)', width: 'var(--copydesk-w)' }}
+            >
               <WireTicker items={activity} />
               <BuildStatus
                 stage={stage}

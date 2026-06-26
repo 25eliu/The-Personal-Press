@@ -435,8 +435,9 @@ export function useEditionCopilot(
       const page = stateRef.current.pages[slot];
       if (!page) return `No section at slot ${slot}.`;
       const lead = page.articles[0];
-      // Erase the lead story NOW — title and all — so the reader jumps to the section and
-      // watches it clear out, then the caret waits while we research.
+      // Erase the WHOLE section NOW — the lead title-and-all typewrites out while every
+      // other article on the page collapses — so the reader watches the entire section
+      // clear, then the caret waits while we research.
       const run = live.begin({
         slot,
         articleIndex: 0,
@@ -444,6 +445,7 @@ export function useEditionCopilot(
         dek: lead?.dek,
         body: lead?.body ?? '',
         whole: true, // clear the lead's chart/table/sources too, not just its text
+        sectionScope: true, // clear EVERY article on the page, not just the lead
       });
       try {
         const fresh = await runResearch(topic, slot === 0, sectionToContext(page));
@@ -452,21 +454,17 @@ export function useEditionCopilot(
         if (!v.ok) return v.error;
         if (!hasRealContent(v.page)) return `No fresh reporting found for “${topic}”.`;
         const finalPage = { ...v.page, topic: shortSectionTitle(v.page.topic) };
-        const newLead = finalPage.articles[0];
-        await run.erased; // ensure the erase finished before we type the new copy in
-        await live.type(run.id, {
-          headline: newLead?.headline,
-          dek: newLead?.dek,
-          body: newLead?.body ?? '',
-          chartImageUrl: newLead?.chartImageUrl,
-          table: newLead?.table,
-          sources: newLead?.sources,
-        });
+        await run.erased; // the whole section is now cleared; the caret holds
+        // Now that the new section is fully loaded, commit it and stream it in: because we
+        // commit FIRST (while the section is blank) and only then reveal, the new content is
+        // measured into its FINAL layout, so it loads in place with no end-of-run repaginate
+        // "refresh". The whole section — header, lead and every story — rises in together.
         dispatch({ type: 'REPLACE_PAGE', slot, page: finalPage });
+        live.end(run.id, { revealSlot: slot });
         setResearchDone(`Replaced “${page.topic}” → “${finalPage.topic}”.`);
         return `Replaced the “${page.topic}” section with freshly-researched reporting: “${finalPage.topic}”.`;
       } finally {
-        live.end(run.id); // commit on success; restore the original on any early return
+        live.end(run.id); // no-op on success (stale id); restores the original on early return
       }
     },
     render: ({ status, args }) =>
@@ -528,6 +526,8 @@ export function useEditionCopilot(
           chartImageUrl: article.chartImageUrl,
           table: article.table,
           sources: article.sources,
+          kicker: article.kicker,
+          byline: article.byline,
         });
         dispatch({ type: 'REPLACE_ARTICLE', slot, index, article });
         setResearchDone(`Updated the “${article.headline}” story.`);

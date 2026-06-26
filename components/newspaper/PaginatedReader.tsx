@@ -143,6 +143,9 @@ export function PaginatedReader({ pages, meta, bw }: { pages: TPage[]; meta: Met
   const live = useLiveEdit();
 
   const [spread, setSpread] = useState(0);
+  // Last section we auto-pinned the reader to (so we persist it into `spread` only once
+  // per change, never fighting the reader's own navigation). See the anchor logic below.
+  const [prevAnchor, setPrevAnchor] = useState<number | null>(null);
   // A turn in progress: which way and between which spreads. Null when settled.
   const [flip, setFlip] = useState<{ dir: 1 | -1; from: number; to: number } | null>(null);
   const [cw, setCw] = useState(1000);
@@ -169,11 +172,22 @@ export function PaginatedReader({ pages, meta, bw }: { pages: TPage[]; meta: Met
     return [...seen.values()];
   }, [leaves]);
 
-  // While the Copy Desk edits a section, DISPLAY that section's spread (derived, not
-  // a setState side-effect) so the reader watches the rewrite happen on the page.
-  const editSpread =
-    editing && live.slot != null ? topics.find((x) => x.topicIndex === live.slot)?.spread ?? null : null;
-  const cur = Math.min(editSpread ?? spread, spreadCount - 1);
+  // Pin the reader to the section being changed for the WHOLE lifecycle — erase, rewrite,
+  // and the post-commit reveal — so it watches the rewrite in place and never snaps to a
+  // different section while the new one loads. `live.slot` drives the erase/type phases;
+  // `live.revealSlot` drives the reveal that plays after the reducer commits.
+  const anchorSlot = editing ? live.slot : live.revealSlot;
+  const anchorSpread =
+    anchorSlot != null ? topics.find((x) => x.topicIndex === anchorSlot)?.spread ?? null : null;
+
+  // Persist the pinned section into `spread` (adjusting state during render — the
+  // sanctioned alternative to a setState effect) so that once the edit + reveal finish
+  // the reader is already on the rewritten section and never falls back to a stale spread.
+  if (anchorSpread != null && anchorSpread !== prevAnchor) {
+    setPrevAnchor(anchorSpread);
+    setSpread(anchorSpread);
+  }
+  const cur = Math.min(anchorSpread ?? spread, spreadCount - 1);
 
   // Turn one spread forward/back. No-op at the ends, mid-turn, or while the Copy
   // Desk is live-editing (so the animation isn't yanked out from under the reader).

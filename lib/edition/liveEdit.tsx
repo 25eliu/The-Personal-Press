@@ -9,6 +9,7 @@ import {
   type ReactNode,
 } from 'react';
 import { paragraphs } from '@/lib/newspaper/blocks';
+import type { TSource, TTableData } from '@/lib/schema';
 
 /**
  * Live-edit choreography. When the Copy Desk changes a section, we don't swap the
@@ -32,11 +33,28 @@ export interface LiveEditState {
   slot: number | null;
   articleKey: string | null; // `${topicIndex}-${articleIndex}` — matches Block.articleKey
   animateHead: boolean; // whether the headline/dek are part of this animation
+  whole: boolean; // true when the ENTIRE article (chart/table/sources too) is being swapped,
+  // not just the body — drives whether BlockView clears + reloads those structural blocks
+  sectionScope: boolean; // true when the WHOLE section (every article on the page) is being
+  // replaced — the animated lead typewriters out/in, every OTHER article in the slot collapses
+  // so the entire section clears, not just its lead
+  revealSlot: number | null; // after a section replace commits, the slot whose freshly-printed
+  // (non-lead) articles rise in — so the new section loads via animation, not a hard repaginate
   headline: string;
   dek: string;
   paras: string[]; // body split into paragraphs (erase renders these per leaf slot)
   body: string; // raw body text (typing renders this into the first paragraph slot)
   revealed: number; // chars shown so far, counted from the top: headline → dek → body
+  // The NEW story's structural content, surfaced during typing/settling so the chart,
+  // table and sources load in WITH the text instead of popping when the reducer commits
+  // (until then `pages` still holds the old article). Only meaningful while `whole`.
+  chartImageUrl?: string;
+  table?: TTableData;
+  sources?: TSource[];
+  // The NEW head's kicker/byline, streamed in during typing so the kicker label and the
+  // "By …" line return WITH the headline (they also erase with it — nothing lingers).
+  kicker?: string;
+  byline?: string;
 }
 
 interface LiveEditController extends LiveEditState {
@@ -47,13 +65,30 @@ interface LiveEditController extends LiveEditState {
     headline?: string;
     dek?: string;
     body: string;
+    whole?: boolean; // erase the chart/table/sources too (full-article replace)
+    sectionScope?: boolean; // also collapse every OTHER article on the page (whole-section replace)
   }) => { id: number; erased: Promise<void> };
   /** Type the new story in. No-op unless `id` still owns the stage. */
-  type: (id: number, opts: { headline?: string; dek?: string; body: string }) => Promise<void>;
+  type: (
+    id: number,
+    opts: {
+      headline?: string;
+      dek?: string;
+      body: string;
+      chartImageUrl?: string;
+      table?: TTableData;
+      sources?: TSource[];
+      kicker?: string;
+      byline?: string;
+    },
+  ) => Promise<void>;
   /** One-shot erase+type for callers that already have the new text (local body edits). */
   play: (opts: { slot: number; articleIndex: number; oldBody: string; newBody: string }) => Promise<void>;
-  /** Hand the stage back. Ignored if a newer run already owns it (pass the run id). */
-  end: (id?: number) => void;
+  /**
+   * Hand the stage back. Ignored if a newer run already owns it (pass the run id).
+   * Pass `revealSlot` after a whole-section commit to rise the new (non-lead) articles in.
+   */
+  end: (id?: number, opts?: { revealSlot?: number }) => void;
 }
 
 const IDLE: LiveEditState = {
@@ -61,11 +96,17 @@ const IDLE: LiveEditState = {
   slot: null,
   articleKey: null,
   animateHead: false,
+  whole: false,
+  sectionScope: false,
+  revealSlot: null,
   headline: '',
   dek: '',
   paras: [],
   body: '',
   revealed: 0,
+  chartImageUrl: undefined,
+  table: undefined,
+  sources: undefined,
 };
 
 const Ctx = createContext<LiveEditController | null>(null);
@@ -95,9 +136,37 @@ export function liveDek(s: LiveEditState): string {
 export function liveBodyChars(s: LiveEditState): number {
   return Math.max(0, s.revealed - s.headline.length - s.dek.length);
 }
+/**
+ * Erasing slices the head differently from typing. The single top-down `revealed`
+ * counter keeps the headline FULL until the body+dek have drained — so the title and
+ * dek would only vanish in the last instant, reading as "only the body was deleted".
+ * During an erase we instead shrink the head IN STEP with the overall progress
+ * (1 = un-erased → 0 = gone) so the title and description visibly clear WITH the body.
+ */
+export function liveEraseFrac(s: LiveEditState): number {
+  const total = s.headline.length + s.dek.length + s.paras.reduce((n, p) => n + p.length, 0);
+  return total > 0 ? clamp(s.revealed / total, 0, 1) : 0;
+}
+/** The headline still showing mid-erase (proportional shrink, not a top-down slice). */
+export function liveHeadlineErasing(s: LiveEditState): string {
+  return s.headline.slice(0, Math.ceil(s.headline.length * liveEraseFrac(s)));
+}
+/** The dek still showing mid-erase (proportional shrink, in step with the headline). */
+export function liveDekErasing(s: LiveEditState): string {
+  return s.dek.slice(0, Math.ceil(s.dek.length * liveEraseFrac(s)));
+}
 /** True while the caret sits in the head block (body fully erased / not yet typed). */
 export function liveCaretInHead(s: LiveEditState): boolean {
   return s.animateHead && liveBodyChars(s) <= 0;
+}
+/** True once the headline + dek are fully revealed (the figure sits just below them). */
+export function liveHeadDone(s: LiveEditState): boolean {
+  return s.revealed >= s.headline.length + s.dek.length;
+}
+/** True once the whole body is revealed (the table + sources sit just below it). */
+export function liveBodyDone(s: LiveEditState): boolean {
+  const bodyLen = s.paras.reduce((n, p) => n + p.length, 0);
+  return liveBodyChars(s) >= bodyLen;
 }
 
 const eraseMs = (total: number) => Math.min(900, Math.max(280, total * 1.1));
@@ -128,11 +197,21 @@ function tween(
 export function LiveEditProvider({ children }: { children: ReactNode }) {
   const [st, setSt] = useState<LiveEditState>(IDLE);
   const runId = useRef(0);
+  const revealTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const end = useCallback((id?: number) => {
+  const end = useCallback((id?: number, opts?: { revealSlot?: number }) => {
     if (id !== undefined && id !== runId.current) return; // a newer run owns the stage
     runId.current++; // cancel any in-flight tween
-    setSt(IDLE);
+    if (opts?.revealSlot != null) {
+      // Commit a whole-section replace: go idle but mark the slot so its new (non-lead)
+      // articles rise in, then clear that mark once the staggered reprint has played.
+      const slot = opts.revealSlot;
+      setSt({ ...IDLE, revealSlot: slot });
+      if (revealTimer.current) clearTimeout(revealTimer.current);
+      revealTimer.current = setTimeout(() => setSt((s) => ({ ...s, revealSlot: null })), 1500);
+    } else {
+      setSt(IDLE);
+    }
   }, []);
 
   const begin = useCallback(
@@ -142,12 +221,16 @@ export function LiveEditProvider({ children }: { children: ReactNode }) {
       headline = '',
       dek = '',
       body,
+      whole = false,
+      sectionScope = false,
     }: {
       slot: number;
       articleIndex: number;
       headline?: string;
       dek?: string;
       body: string;
+      whole?: boolean;
+      sectionScope?: boolean;
     }) => {
       const id = ++runId.current;
       const articleKey = `${slot}-${articleIndex}`;
@@ -161,7 +244,20 @@ export function LiveEditProvider({ children }: { children: ReactNode }) {
         return { id, erased: Promise.resolve() };
       }
 
-      setSt({ phase: 'erasing', slot, articleKey, animateHead, headline, dek, paras, body, revealed: total });
+      setSt({
+        ...IDLE,
+        phase: 'erasing',
+        slot,
+        articleKey,
+        animateHead,
+        whole,
+        sectionScope,
+        headline,
+        dek,
+        paras,
+        body,
+        revealed: total,
+      });
       const erased = tween(
         total,
         0,
@@ -179,14 +275,51 @@ export function LiveEditProvider({ children }: { children: ReactNode }) {
   );
 
   const type = useCallback(
-    async (id: number, { headline = '', dek = '', body }: { headline?: string; dek?: string; body: string }) => {
+    async (
+      id: number,
+      {
+        headline = '',
+        dek = '',
+        body,
+        chartImageUrl,
+        table,
+        sources,
+        kicker,
+        byline,
+      }: {
+        headline?: string;
+        dek?: string;
+        body: string;
+        chartImageUrl?: string;
+        table?: TTableData;
+        sources?: TSource[];
+        kicker?: string;
+        byline?: string;
+      },
+    ) => {
       if (runId.current !== id || prefersReduced()) return;
       const animateHead = Boolean(headline || dek);
       const paras = paragraphs(body);
       const total = headline.length + dek.length + paras.reduce((n, p) => n + p.length, 0);
 
-      // Swap the surface to the NEW story and type it in from the top (title first).
-      setSt((s) => ({ ...s, phase: 'typing', animateHead, headline, dek, paras, body, revealed: 0 }));
+      // Swap the surface to the NEW story — text plus the structural content, which the
+      // figure/table/sources blocks now read from here so they load in WITH the type
+      // (rather than popping when the caller commits) — and type it in from the top.
+      setSt((s) => ({
+        ...s,
+        phase: 'typing',
+        animateHead,
+        headline,
+        dek,
+        paras,
+        body,
+        chartImageUrl,
+        table,
+        sources,
+        kicker,
+        byline,
+        revealed: 0,
+      }));
       await tween(
         0,
         total,

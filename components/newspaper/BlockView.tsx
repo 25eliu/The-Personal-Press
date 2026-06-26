@@ -1,6 +1,17 @@
 import type { Block } from '@/lib/newspaper/blocks';
 import { FIGURE_MAX_H } from '@/lib/newspaper/leafLayout';
-import { useLiveEdit, liveHeadline, liveDek, liveBodyChars, liveCaretInHead } from '@/lib/edition/liveEdit';
+import {
+  useLiveEdit,
+  liveHeadline,
+  liveDek,
+  liveBodyChars,
+  liveCaretInHead,
+  liveHeadDone,
+  liveBodyDone,
+  liveHeadlineErasing,
+  liveDekErasing,
+  liveEraseFrac,
+} from '@/lib/edition/liveEdit';
 import { DataTable } from './DataTable';
 import { SourceCredit } from './SourceCredit';
 
@@ -28,15 +39,43 @@ export function BlockView({ block }: { block: Block }) {
   const live = useLiveEdit();
   const liveTarget = live.phase !== 'idle' && live.articleKey === block.articleKey;
 
-  // HEAD — the headline (and dek) erase up to nothing, hold a caret, then type back in.
+  // WHOLE-SECTION replace: every OTHER article on the page collapses while the lead
+  // typewriters out and back in, so the entire section clears — not just its lead. These
+  // siblings reappear (risen in, see Leaf) only once the new section commits.
+  if (
+    live.sectionScope &&
+    live.phase !== 'idle' &&
+    live.slot === block.topicIndex &&
+    block.articleKey !== live.articleKey
+  ) {
+    return null;
+  }
+
+  // HEAD — the kicker, headline, dek and byline ALL erase up to nothing, hold a caret,
+  // then stream back in. Nothing in the head (not even the "By …" line) lingers.
   if (liveTarget && live.animateHead && kind === 'head') {
-    const headline = liveHeadline(live);
-    const dek = liveDek(live);
-    const inHead = liveCaretInHead(live) && live.phase !== 'settling';
+    const erasing = live.phase === 'erasing';
+    const waiting = live.phase === 'waiting';
+    const streaming = live.phase === 'typing' || live.phase === 'settling';
+    // Mid-erase the title + dek shrink in step with the body so the whole scope clears
+    // together; otherwise they reveal/hold top-down (typing, waiting, settling).
+    const headline = erasing ? liveHeadlineErasing(live) : liveHeadline(live);
+    const dek = erasing ? liveDekErasing(live) : liveDek(live);
+    const inHead = !erasing && liveCaretInHead(live) && live.phase !== 'settling';
     const caretInHeadline = inHead && live.revealed <= live.headline.length;
+    // The kicker (above the headline) and byline (below the head) are part of the scope:
+    // they fade out WITH the erase, vanish while the caret waits, and stream back — the
+    // kicker as the title starts, the byline once the title+dek are fully in.
+    const frac = liveEraseFrac(live);
+    const kickerOpacity = erasing ? frac : waiting ? 0 : 1;
+    const bylineOpacity = erasing ? frac : streaming && liveHeadDone(live) ? 1 : 0;
+    const kickerText = streaming ? live.kicker ?? article.kicker : article.kicker;
+    const bylineText = streaming ? live.byline ?? article.byline : article.byline;
     return (
       <header>
-        <p className="text-[10px] font-bold uppercase tracking-widest text-black/70">{article.kicker}</p>
+        <p className="text-[10px] font-bold uppercase tracking-widest text-black/70" style={{ opacity: kickerOpacity }}>
+          {kickerText}
+        </p>
         <h3 className={`font-head font-black leading-[1.05] ${HEADLINE_SIZE[article.size]}`}>
           {headline}
           {caretInHeadline && <Caret />}
@@ -47,7 +86,9 @@ export function BlockView({ block }: { block: Block }) {
             {inHead && !caretInHeadline && <Caret />}
           </p>
         )}
-        <p className="mt-1 text-[9px] uppercase tracking-wide text-black/60">By {article.byline}</p>
+        <p className="mt-1 text-[9px] uppercase tracking-wide text-black/60" style={{ opacity: bylineOpacity }}>
+          By {bylineText}
+        </p>
       </header>
     );
   }
@@ -101,6 +142,48 @@ export function BlockView({ block }: { block: Block }) {
       );
     }
     return null;
+  }
+
+  // STRUCTURAL (chart / table / sources) — only when the WHOLE article is being swapped.
+  // They clear with the text during erase/wait, then reload the NEW content from live
+  // state during typing, gated to their reading-order spot so they load in rather than
+  // pop at commit. Body-only edits (live.whole === false) skip this and render statically
+  // below, leaving the chart/sources untouched. Only blocks that already exist in this
+  // article's shred animate; a chart added to a story that had none appears at the commit.
+  if (liveTarget && live.whole && (kind === 'figure' || kind === 'table' || kind === 'sources')) {
+    if (live.phase === 'erasing' || live.phase === 'waiting') return null;
+    if (kind === 'figure') {
+      if (!live.chartImageUrl || !liveHeadDone(live)) return null;
+      return (
+        <figure className="live-edit-rise border border-black/80 p-1">
+          <div className="halftone overflow-hidden">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={live.chartImageUrl}
+              alt={live.headline}
+              className="w-full object-contain"
+              style={{ maxHeight: FIGURE_MAX_H }}
+            />
+          </div>
+          <figcaption className="mt-1 text-[10px] italic leading-snug">{live.headline}</figcaption>
+        </figure>
+      );
+    }
+    if (kind === 'table') {
+      if (!live.table || !liveBodyDone(live)) return null;
+      return (
+        <div className="live-edit-rise">
+          <DataTable table={live.table} />
+        </div>
+      );
+    }
+    // sources
+    if (!live.sources || !liveBodyDone(live)) return null;
+    return (
+      <div className="live-edit-rise">
+        <SourceCredit sources={live.sources} />
+      </div>
+    );
   }
 
   if (kind === 'head') {

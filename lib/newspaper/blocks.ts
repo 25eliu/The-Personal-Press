@@ -15,6 +15,7 @@ export interface Block {
   topicIndex: number;
   topic: string;
   articleKey: string; // identifies the owning article, for "continued" detection
+  articleIndex: number; // 0-based position of the owning article within its page (0 = lead)
   kind: BlockKind;
   article: TArticle;
   paraIndex: number; // 0 for non-paragraph blocks
@@ -38,6 +39,7 @@ export function flattenTopic(page: TPage, topicIndex: number): Block[] {
         topicIndex,
         topic: page.topic,
         articleKey,
+        articleIndex: ai,
         kind,
         article,
         paraIndex,

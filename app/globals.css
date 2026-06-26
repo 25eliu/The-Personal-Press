@@ -224,6 +224,19 @@ body {
   animation: blink 1.05s steps(1) infinite;
 }
 
+/* A structural block (chart/table/sources) loading in as the live-edit typewriter
+   reaches it — a quiet rise + fade, so it joins the new story rather than popping. */
+@keyframes live-edit-rise {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.live-edit-rise {
+  animation: live-edit-rise 0.32s ease-out both;
+}
+@media (prefers-reduced-motion: reduce) {
+  .live-edit-rise { animation: none; }
+}
+
 /* Progress track + indeterminate "barber pole" fill for the press console — ink,
    no vermilion, so the build reads calm rather than alarming. */
 .press-track { background: rgba(20, 17, 13, 0.1); }
@@ -394,17 +407,20 @@ cpk-web-inspector { display: none !important; }
   will-change: padding-left, padding-right;
 }
 @media (min-width: 640px) {
-  /* LOADING: half the reserve on EACH side → the spread prints FRONT AND CENTRE, at
-     the same width as the reading layout. Half = copydesk-w/2 + one gap. */
+  /* The reserve total = the desk footprint (copydesk-w + 2 gaps) PLUS a left margin
+     (2 gaps) so the reading layout never rams the masthead/chrome against the edge.
+     That total is held constant across both states, so the spread's SIZE never changes
+     — only its position. Half of it = copydesk-w/2 + 2 gaps. */
+  /* LOADING: split evenly → the spread prints FRONT AND CENTRE. */
   .press-floor[data-floor-state='loading'] {
-    padding-left: calc(var(--copydesk-w) / 2 + var(--copydesk-gap));
-    padding-right: calc(var(--copydesk-w) / 2 + var(--copydesk-gap));
+    padding-left: calc(var(--copydesk-w) / 2 + 2 * var(--copydesk-gap));
+    padding-right: calc(var(--copydesk-w) / 2 + 2 * var(--copydesk-gap));
   }
-  /* REVEAL (desk open): the WHOLE reserve on the right (copydesk-w + 2 gaps), zero on
-     the left. Same total as the loading split, so the spread keeps its exact size and
-     just slides left as the desk glides into the freed gutter. */
+  /* REVEAL (desk open): keep a clean left margin (2 gaps), put the desk's footprint on
+     the right. Same total as the loading split, so the spread keeps its exact size and
+     simply slides left into a balanced position — chrome stays off the viewport edge. */
   .press-floor[data-floor-state='desk-open'] {
-    padding-left: 0;
+    padding-left: calc(2 * var(--copydesk-gap));
     padding-right: calc(var(--copydesk-w) + 2 * var(--copydesk-gap));
   }
   /* 'full' (desk closed) and 'idle' reserve nothing — the spread fills the floor. */

@@ -6,7 +6,10 @@ import type { SectionPlanItem } from '@/lib/stream/events';
 import { NewspaperPage } from './NewspaperPage';
 import { PaginatedReader } from './PaginatedReader';
 import { Typewriter } from '@/components/build/Typewriter';
+import { LEAF_H } from '@/lib/newspaper/leafLayout';
 
+// Kept equal to leafLayout's LEAF_W so the build skeleton and the finished leaves are
+// the same physical page width; the fit below matches the reader so size is stable.
 const PAGE_W = 600; // fixed page width; the whole spread is fit-scaled to the viewport
 
 type Meta = { masthead: string; tagline: string; edition: string; dateLine: string };
@@ -32,7 +35,7 @@ const PLANNING_LINES = [
 
 function SkeletonPage({ topic }: { topic: string }) {
   return (
-    <div className="paper relative flex w-full flex-col gap-2 overflow-hidden px-6 py-6" style={{ minHeight: 560 }}>
+    <div className="paper relative flex h-full w-full flex-col gap-2 overflow-hidden px-6 py-6">
       <div className="type-setting flex flex-col gap-2">
         <div className="h-7 w-3/4 bg-black/70" />
         <div className="h-3 w-1/3 bg-black/30" />
@@ -57,7 +60,7 @@ function SkeletonPage({ topic }: { topic: string }) {
 /** Shown before the editor has planned the sections — a calm composing-room terminal. */
 function PlanningSheet() {
   return (
-    <div className="paper relative flex w-full flex-col items-center justify-center gap-6 overflow-hidden px-8 py-16 text-center" style={{ minHeight: 560 }}>
+    <div className="paper relative flex h-full w-full flex-col items-center justify-center gap-6 overflow-hidden px-8 py-16 text-center">
       <span className="font-mono-news text-[10px] uppercase tracking-[0.34em] text-[var(--ink)]/40">
         The Personal Press · Composing Room
       </span>
@@ -74,7 +77,7 @@ function PageSheet({ page, slot, topic, meta, building }: {
   page: TPage | null; slot: number; topic: string; meta: Meta; building: boolean;
 }) {
   return (
-    <div className="relative" style={{ width: PAGE_W }}>
+    <div className="relative overflow-hidden" style={{ width: PAGE_W, height: LEAF_H }}>
       <AnimatePresence mode="wait">
         {page ? (
           <motion.div key="p" initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.35 }}>
@@ -104,6 +107,7 @@ export function NewspaperView({ plan, pages, meta, building, bw }: {
 
   const [spread, setSpread] = useState(0);
   const [cw, setCw] = useState(1000);
+  const [ch, setCh] = useState(800);
   const [lightbox, setLightbox] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
 
@@ -117,11 +121,15 @@ export function NewspaperView({ plan, pages, meta, building, bw }: {
     if (!el) return;
     // Ignore sub-threshold changes so a toggling scrollbar can't cause a
     // fit→zoom→scrollbar feedback loop (which would thrash renders / crash).
-    const update = () => setCw((prev) => (Math.abs(el.clientWidth - prev) > 4 ? el.clientWidth : prev));
+    const update = () => {
+      setCw((prev) => (Math.abs(el.clientWidth - prev) > 4 ? el.clientWidth : prev));
+      setCh((prev) => (Math.abs(window.innerHeight - prev) > 4 ? window.innerHeight : prev));
+    };
     update();
     const ro = new ResizeObserver(update);
     ro.observe(el);
-    return () => ro.disconnect();
+    window.addEventListener('resize', update);
+    return () => { ro.disconnect(); window.removeEventListener('resize', update); };
   }, []);
 
   // Esc closes the chart lightbox.
@@ -132,10 +140,15 @@ export function NewspaperView({ plan, pages, meta, building, bw }: {
   }, []);
 
   const portrait = cw < 720;
-  const spreadW = (portrait ? PAGE_W : PAGE_W * 2) + 40;
-  // Auto-fit the spread to the available width (cap 1.5). No manual zoom control —
-  // the paper always fits the page.
-  const zoom = Math.max(0.3, Math.min(1.5, (cw - 8) / spreadW));
+  // Match the reading paginator's fit EXACTLY (same spread dims, same width+height
+  // budget, same 1.6 cap) so the spread does NOT change size at the build→read handoff.
+  // Height matters: the reader is height-constrained on standard monitors, so a
+  // width-only build fit rendered visibly larger ("big, then shrinks"). The build
+  // scroller is capped at 82vh (see maxHeight below), so that's the height to fit into.
+  const spreadW = (portrait ? PAGE_W : PAGE_W * 2 + 8) + 44;
+  const spreadH = LEAF_H + 34;
+  const availH = ch * 0.84; // ≈ the reader's own height budget (innerHeight − chrome)
+  const zoom = Math.max(0.3, Math.min((cw - 8) / spreadW, (availH - 8) / spreadH, 1.6));
 
   const jump = (slot: number) => setSpread(Math.floor(slot / 2));
 
@@ -157,7 +170,7 @@ export function NewspaperView({ plan, pages, meta, building, bw }: {
       <div className="flex w-full max-w-[1560px] flex-col items-center gap-3">
         <div className="flex w-full justify-center">
           <div className={`spread-frame ${bw ? 'bw' : ''}`} style={{ zoom }}>
-            <div className="flex" style={{ width: PAGE_W }}>
+            <div className="flex" style={{ width: PAGE_W * 2 + 8, height: LEAF_H }}>
               <PlanningSheet />
             </div>
           </div>
@@ -215,7 +228,7 @@ export function NewspaperView({ plan, pages, meta, building, bw }: {
               {right < slots.length ? (
                 <PageSheet page={pages[right] ?? null} slot={right} topic={topicFor(right)} meta={meta} building={building} />
               ) : (
-                !portrait && <div className="paper" style={{ width: PAGE_W }} />
+                !portrait && <div className="paper" style={{ width: PAGE_W, height: LEAF_H }} />
               )}
             </div>
           </div>
