@@ -74,6 +74,18 @@ body {
 @keyframes shimmer { 0%, 100% { opacity: 0.45; } 50% { opacity: 0.85; } }
 .shimmer-bars > * { animation: shimmer 1.3s ease-in-out infinite; }
 
+/* Slim, rounded "pill" scrollbar for the reading spread. */
+.news-scroll { scrollbar-width: thin; scrollbar-color: rgba(20, 17, 13, 0.45) transparent; }
+.news-scroll::-webkit-scrollbar { width: 9px; height: 9px; }
+.news-scroll::-webkit-scrollbar-track { background: transparent; }
+.news-scroll::-webkit-scrollbar-thumb {
+  background: rgba(20, 17, 13, 0.4);
+  border-radius: 999px;
+  border: 2px solid transparent;
+  background-clip: content-box;
+}
+.news-scroll::-webkit-scrollbar-thumb:hover { background: rgba(20, 17, 13, 0.65); }
+
 .paper {
   background-color: var(--paper);
   background-image:

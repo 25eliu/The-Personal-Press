@@ -5,7 +5,7 @@ import type { TPage } from '@/lib/schema';
 import type { SectionPlanItem } from '@/lib/stream/events';
 import { NewspaperPage } from './NewspaperPage';
 
-const PAGE_W = 480; // fixed page width; the whole spread is fit-scaled to the viewport
+const PAGE_W = 600; // fixed page width; the whole spread is fit-scaled to the viewport
 
 type Meta = { masthead: string; tagline: string; edition: string; dateLine: string };
 
@@ -71,7 +71,9 @@ export function NewspaperView({ plan, pages, meta, building, bw }: {
   useEffect(() => {
     const el = scrollRef.current;
     if (!el) return;
-    const update = () => setCw(el.clientWidth);
+    // Ignore sub-threshold changes so a toggling scrollbar can't cause a
+    // fit→zoom→scrollbar feedback loop (which would thrash renders / crash).
+    const update = () => setCw((prev) => (Math.abs(el.clientWidth - prev) > 4 ? el.clientWidth : prev));
     update();
     const ro = new ResizeObserver(update);
     ro.observe(el);
@@ -92,17 +94,22 @@ export function NewspaperView({ plan, pages, meta, building, bw }: {
 
   const jump = (slot: number) => setSpread(Math.floor(slot / 2));
 
+  const chipBase = 'font-mono-news rounded-sm border px-2.5 py-0.5 text-[11px] uppercase tracking-wide transition-colors shadow-sm';
+  const pill = 'border-[var(--ink)]/40 bg-[var(--paper)]/85 text-[var(--ink)] hover:bg-[var(--paper)]';
+
   return (
-    <div className="flex w-full max-w-[1100px] flex-col items-center gap-3">
+    <div className="flex w-full max-w-[1340px] flex-col items-center gap-3">
       {/* Control bar */}
-      <div className="flex w-full flex-wrap items-center justify-between gap-2 text-[#f4efe2]">
+      <div className="flex w-full flex-wrap items-center justify-between gap-2">
         <div className="flex flex-wrap items-center gap-1.5">
           {slots.map((i) => (
             <button
               key={i}
               onClick={() => jump(i)}
-              className={`font-mono-news rounded-sm border px-2.5 py-0.5 text-[11px] uppercase tracking-wide transition-colors ${
-                Math.floor(i / 2) === cur ? 'border-[#f4efe2] bg-[#f4efe2]/15' : 'border-[#f4efe2]/40 hover:bg-[#f4efe2]/10'
+              className={`${chipBase} ${
+                Math.floor(i / 2) === cur
+                  ? 'border-[var(--ink)] bg-[var(--ink)] text-[var(--paper)]'
+                  : pill
               }`}
             >
               {i === 0 ? 'Front' : topicFor(i)}
@@ -110,16 +117,16 @@ export function NewspaperView({ plan, pages, meta, building, bw }: {
           ))}
         </div>
         <div className="font-mono-news flex items-center gap-1 text-[11px]">
-          <button onClick={() => setMult((m) => Math.max(0.6, +(m - 0.2).toFixed(2)))} className="h-6 w-6 rounded-sm border border-[#f4efe2]/40 hover:bg-[#f4efe2]/10" aria-label="Zoom out">−</button>
-          <button onClick={() => setMult(1)} className="rounded-sm border border-[#f4efe2]/40 px-2 py-0.5 hover:bg-[#f4efe2]/10" aria-label="Fit">{Math.round(zoom * 100)}%</button>
-          <button onClick={() => setMult((m) => Math.min(3, +(m + 0.2).toFixed(2)))} className="h-6 w-6 rounded-sm border border-[#f4efe2]/40 hover:bg-[#f4efe2]/10" aria-label="Zoom in">+</button>
+          <button onClick={() => setMult((m) => Math.max(0.6, +(m - 0.2).toFixed(2)))} className={`h-6 w-6 rounded-sm border shadow-sm ${pill}`} aria-label="Zoom out">−</button>
+          <button onClick={() => setMult(1)} className={`rounded-sm border px-2 py-0.5 shadow-sm ${pill}`} aria-label="Fit">{Math.round(zoom * 100)}%</button>
+          <button onClick={() => setMult((m) => Math.min(3, +(m + 0.2).toFixed(2)))} className={`h-6 w-6 rounded-sm border shadow-sm ${pill}`} aria-label="Zoom in">+</button>
         </div>
       </div>
 
       {/* Scrollable, zoomable spread */}
       <div
         ref={scrollRef}
-        className="w-full overflow-auto [&_img]:cursor-zoom-in"
+        className="news-scroll w-full overflow-auto [&_img]:cursor-zoom-in"
         style={{ maxHeight: '82vh' }}
         onClick={(e) => {
           const t = e.target as HTMLElement;
@@ -142,10 +149,10 @@ export function NewspaperView({ plan, pages, meta, building, bw }: {
       </div>
 
       {/* Spread navigation */}
-      <div className="font-mono-news flex items-center gap-4 text-xs uppercase tracking-widest text-[#f4efe2]/85">
-        <button onClick={() => setSpread((s) => Math.max(0, s - 1))} disabled={cur === 0} className="disabled:opacity-30">◀ Prev</button>
-        <span>Spread {cur + 1} / {spreadCount}</span>
-        <button onClick={() => setSpread((s) => Math.min(spreadCount - 1, s + 1))} disabled={cur >= spreadCount - 1} className="disabled:opacity-30">Next ▶</button>
+      <div className="font-mono-news flex items-center gap-2 rounded-full border border-[var(--ink)]/40 bg-[var(--paper)]/85 px-3 py-1 text-xs uppercase tracking-widest text-[var(--ink)] shadow-sm">
+        <button onClick={() => setSpread((s) => Math.max(0, s - 1))} disabled={cur === 0} className="hover:opacity-70 disabled:opacity-30">◀ Prev</button>
+        <span className="px-1 opacity-70">Spread {cur + 1} / {spreadCount}</span>
+        <button onClick={() => setSpread((s) => Math.min(spreadCount - 1, s + 1))} disabled={cur >= spreadCount - 1} className="hover:opacity-70 disabled:opacity-30">Next ▶</button>
       </div>
 
       {/* Chart lightbox — click a chart to zoom in */}

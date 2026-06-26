@@ -19,7 +19,7 @@ export function WireTicker({ items }: { items: ActivityItem[] }) {
   const latest = items.length > 0 ? items[items.length - 1] : null;
   const takoCount = items.filter((i) => i.kind === 'tako').length;
   return (
-    <div className="ticker font-mono-news w-full max-w-6xl overflow-hidden rounded-sm border border-black/70 shadow-lg">
+    <div className="ticker font-mono-news w-full max-w-[1340px] overflow-hidden rounded-sm border border-black/70 shadow-lg">
       <div className="flex h-10 items-stretch">
         <div className="flex shrink-0 items-center gap-2 bg-[var(--accent)] px-3 text-[11px] font-bold uppercase tracking-[0.2em] text-[var(--paper)]">
           <span className="live-dot">●</span>

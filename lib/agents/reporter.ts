@@ -62,15 +62,23 @@ export function attachArt(page: TPage, f: Findings): TPage {
   return { ...page, articles };
 }
 
+/** Headline used by the degraded fallback page; also the marker for "no content". */
+export const NO_REPORT_HEADLINE = 'No fresh reporting on the wire';
+
 export function emptyPage(topic: string): TPage {
   return {
     topic,
     articles: [{
-      kicker: topic, headline: 'No fresh reporting on the wire', byline: 'Tako Wire',
+      kicker: topic, headline: NO_REPORT_HEADLINE, byline: 'Tako Wire',
       body: 'Our reporters found no new sourced data on this topic for today’s edition.',
       size: 'brief', sources: [{ name: BRAND }],
     }],
   };
+}
+
+/** A page has real content if any article is not the "no fresh reporting" fallback. */
+export function hasRealContent(page: TPage): boolean {
+  return page.articles.some((a) => a.headline !== NO_REPORT_HEADLINE);
 }
 
 function distillPrompt(topic: string, isFront: boolean, ctx: string): string {
@@ -94,6 +102,7 @@ export async function runReporter(
   isFront: boolean,
   masthead: string,
   onActivity?: (a: ReporterActivity) => void,
+  signal?: AbortSignal,
 ): Promise<TPage> {
   try {
     const tools = buildTakoTools();
@@ -105,6 +114,7 @@ export async function runReporter(
       prompt: `Report the section: "${topic}". Gather sourced data with the Tako tools.`,
       tools,
       stopWhen: isStepCount(6),
+      abortSignal: signal,
       onStepFinish: (step) => {
         for (const call of step.toolCalls ?? []) {
           const tool = call.toolName;
@@ -136,6 +146,7 @@ export async function runReporter(
       // Distilling a full page from a large research blob occasionally returns an
       // object that fails validation; a couple of extra retries makes it reliable.
       maxRetries: 3,
+      abortSignal: signal,
     });
     logCall('distill.done', { topic, articles: object.articles.length, usage: usageSummary(distillUsage) });
 

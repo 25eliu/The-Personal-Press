@@ -10,6 +10,8 @@ vi.mock('@/lib/agents/reporter', () => ({
   runReporter: vi.fn(async (topic: string) => ({
     topic, articles: [{ kicker: 'k', headline: `H ${topic}`, body: 'b', size: 'brief', byline: 'Tako Wire', sources: [{ name: 'X' }] }],
   })),
+  hasRealContent: (p: { articles: { headline: string }[] }) =>
+    p.articles.some((a) => a.headline !== 'No fresh reporting on the wire'),
 }));
 
 import { orchestrate } from '@/lib/agents/orchestrate';

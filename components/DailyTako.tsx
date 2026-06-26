@@ -80,6 +80,10 @@ export function DailyTako() {
     } else if (e.type === 'section_done') {
       setPages((prev) => { const next = [...prev]; next[e.slot] = e.page; return next; });
     } else if (e.type === 'complete') {
+      // Rebuild from the finished paper so dropped "no fresh reporting" sections
+      // disappear from the spreads and section nav.
+      setPlan(e.newspaper.pages.map((p, i) => ({ topic: p.topic, slot: i })));
+      setPages(e.newspaper.pages);
       setPhase('printing');
       setTimeout(() => setPhase('reading'), 900);
     } else if (e.type === 'error') {
@@ -114,14 +118,14 @@ export function DailyTako() {
 
   return (
     <main className="relative flex min-h-screen flex-col items-center gap-4 p-5">
-      {/* Light scrim so cream pages pop without hiding the desk. */}
-      {phase !== 'idle' && <div className="fixed inset-0 -z-10 bg-black/25" />}
+      {/* Very light scrim so cream pages pop without hiding the desk. */}
+      {phase !== 'idle' && <div className="fixed inset-0 -z-10 bg-black/10" />}
 
       {phase !== 'idle' && (
-        <div className="flex w-full max-w-[1100px] items-center justify-between">
+        <div className="flex w-full max-w-[1340px] items-center justify-between">
           <button
             onClick={() => { abortRef.current?.abort(); setPhase('idle'); }}
-            className="font-mono-news text-xs uppercase tracking-widest text-[#f4efe2]/80 drop-shadow transition-colors hover:text-[#f4efe2]"
+            className="font-mono-news rounded-sm border border-[var(--ink)]/40 bg-[var(--paper)]/85 px-2.5 py-1 text-xs uppercase tracking-widest text-[var(--ink)] shadow-sm transition-colors hover:bg-[var(--paper)]"
           >
             ← New paper
           </button>
