@@ -1,0 +1,117 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 1000" preserveAspectRatio="xMidYMid slice" role="img" aria-label="Cartoon desk placeholder background">
+  <defs>
+    <linearGradient id="wood" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#79502c"/>
+      <stop offset="0.5" stop-color="#5f4023"/>
+      <stop offset="1" stop-color="#47301a"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="0.5" cy="0.38" r="0.7">
+      <stop offset="0" stop-color="#8a5e34" stop-opacity="0.55"/>
+      <stop offset="1" stop-color="#8a5e34" stop-opacity="0"/>
+    </radialGradient>
+    <g id="steam">
+      <path d="M0 0 C 14 -22 -14 -40 0 -62 C 12 -80 -10 -96 2 -118" fill="none" stroke="#fff" stroke-opacity="0.5" stroke-width="6" stroke-linecap="round"/>
+    </g>
+  </defs>
+
+  <!-- Desk surface -->
+  <rect width="1600" height="1000" fill="url(#wood)"/>
+  <rect width="1600" height="1000" fill="url(#glow)"/>
+  <!-- Plank seams -->
+  <g stroke="#3a2614" stroke-opacity="0.45" stroke-width="3">
+    <line x1="0" y1="250" x2="1600" y2="250"/>
+    <line x1="0" y1="520" x2="1600" y2="520"/>
+    <line x1="0" y1="790" x2="1600" y2="790"/>
+  </g>
+  <g stroke="#ffffff" stroke-opacity="0.04" stroke-width="2">
+    <line x1="0" y1="253" x2="1600" y2="253"/>
+    <line x1="0" y1="523" x2="1600" y2="523"/>
+    <line x1="0" y1="793" x2="1600" y2="793"/>
+  </g>
+
+  <!-- ===== Top-left: coffee mug ===== -->
+  <g transform="translate(150 150)">
+    <g transform="translate(70 -40)" opacity="0.7">
+      <use href="#steam"/>
+      <use href="#steam" x="40"/>
+    </g>
+    <ellipse cx="80" cy="190" rx="86" ry="20" fill="#000" opacity="0.18"/>
+    <path d="M150 95 q56 0 56 46 q0 46 -56 46" fill="none" stroke="#2a1d12" stroke-width="12"/>
+    <rect x="14" y="80" width="140" height="110" rx="16" fill="#efe7d4" stroke="#2a1d12" stroke-width="10"/>
+    <rect x="14" y="80" width="140" height="30" rx="14" fill="#c0341d"/>
+    <ellipse cx="84" cy="92" rx="58" ry="13" fill="#3b2415" stroke="#2a1d12" stroke-width="6"/>
+  </g>
+
+  <!-- ===== Top-right: desk lamp ===== -->
+  <g transform="translate(1300 110)">
+    <ellipse cx="40" cy="320" rx="120" ry="26" fill="#000" opacity="0.18"/>
+    <rect x="-30" y="300" width="140" height="22" rx="10" fill="#2f3a40" stroke="#1c2327" stroke-width="8"/>
+    <line x1="40" y1="300" x2="120" y2="150" stroke="#2f3a40" stroke-width="16" stroke-linecap="round"/>
+    <line x1="120" y1="150" x2="60" y2="60" stroke="#2f3a40" stroke-width="16" stroke-linecap="round"/>
+    <circle cx="120" cy="150" r="14" fill="#1c2327"/>
+    <path d="M10 40 q50 -30 100 4 l-26 70 q-44 -22 -80 6 z" fill="#c0341d" stroke="#2a1d12" stroke-width="10"/>
+    <circle cx="55" cy="84" r="10" fill="#ffd98a"/>
+  </g>
+
+  <!-- ===== Bottom-left: scattered newspaper sheets ===== -->
+  <g transform="translate(170 690)">
+    <g transform="rotate(-8)">
+      <rect x="0" y="0" width="300" height="220" rx="6" fill="#e7dec8" stroke="#2a1d12" stroke-width="6"/>
+    </g>
+    <g transform="rotate(5) translate(40 -10)">
+      <rect x="0" y="0" width="300" height="220" rx="6" fill="#efe7d4" stroke="#2a1d12" stroke-width="7"/>
+      <rect x="24" y="22" width="252" height="26" fill="#2a1d12"/>
+      <g fill="#2a1d12" opacity="0.55">
+        <rect x="24" y="64" width="120" height="9"/><rect x="24" y="82" width="120" height="9"/>
+        <rect x="24" y="100" width="120" height="9"/><rect x="24" y="118" width="120" height="9"/>
+        <rect x="24" y="136" width="120" height="9"/><rect x="24" y="154" width="90" height="9"/>
+        <rect x="160" y="64" width="116" height="9"/><rect x="160" y="82" width="116" height="9"/>
+        <rect x="160" y="100" width="116" height="9"/><rect x="160" y="118" width="116" height="9"/>
+      </g>
+      <rect x="160" y="138" width="116" height="44" fill="#2a1d12" opacity="0.2"/>
+    </g>
+    <!-- pencil -->
+    <g transform="rotate(-26) translate(150 250)">
+      <rect x="0" y="0" width="230" height="20" rx="4" fill="#e3b23c" stroke="#2a1d12" stroke-width="5"/>
+      <polygon points="230,0 270,10 230,20" fill="#e9cfa0" stroke="#2a1d12" stroke-width="5"/>
+      <polygon points="262,6 270,10 262,14" fill="#2a1d12"/>
+      <rect x="-26" y="0" width="26" height="20" rx="4" fill="#d76a8a" stroke="#2a1d12" stroke-width="5"/>
+    </g>
+  </g>
+
+  <!-- ===== Bottom-right: ink bottle + fountain pen ===== -->
+  <g transform="translate(1230 720)">
+    <ellipse cx="110" cy="225" rx="150" ry="26" fill="#000" opacity="0.18"/>
+    <!-- ink bottle -->
+    <g transform="translate(0 60)">
+      <rect x="20" y="40" width="150" height="150" rx="14" fill="#2f4f57" stroke="#16252a" stroke-width="9"/>
+      <rect x="20" y="96" width="150" height="94" rx="10" fill="#16252a"/>
+      <rect x="60" y="14" width="70" height="34" rx="8" fill="#1c2327" stroke="#16252a" stroke-width="6"/>
+      <text x="95" y="160" font-family="Georgia, serif" font-size="34" fill="#cfe0dd" text-anchor="middle" font-style="italic">ink</text>
+    </g>
+    <!-- fountain pen -->
+    <g transform="rotate(38) translate(150 -40)">
+      <rect x="0" y="0" width="250" height="30" rx="14" fill="#1c1c1c" stroke="#000" stroke-width="5"/>
+      <rect x="150" y="0" width="60" height="30" rx="6" fill="#d9a441" stroke="#000" stroke-width="5"/>
+      <polygon points="250,0 300,15 250,30" fill="#d9a441" stroke="#000" stroke-width="5"/>
+      <line x1="262" y1="8" x2="286" y2="15" stroke="#000" stroke-width="4"/>
+      <line x1="262" y1="22" x2="286" y2="15" stroke="#000" stroke-width="4"/>
+    </g>
+  </g>
+
+  <!-- ===== Small potted plant, mid-right ===== -->
+  <g transform="translate(1360 470)">
+    <g fill="#3f6b3a" stroke="#234021" stroke-width="6">
+      <path d="M40 60 q-40 -70 -8 -120 q24 40 8 120 z"/>
+      <path d="M40 60 q44 -64 14 -118 q-22 42 -14 118 z"/>
+      <path d="M40 64 q-2 -86 -2 -120 q22 50 2 120 z"/>
+    </g>
+    <path d="M6 60 h68 l-12 70 h-44 z" fill="#b5613a" stroke="#2a1d12" stroke-width="7"/>
+  </g>
+
+  <!-- Placeholder label (low-key) -->
+  <g opacity="0.5" transform="translate(800 940)" text-anchor="middle" fill="#f4efe2" font-family="'Courier New', monospace">
+    <text font-size="26" letter-spacing="3">BACKGROUND PLACEHOLDER</text>
+    <text y="30" font-size="17" letter-spacing="2" opacity="0.8">drop your art at public/desk.png to replace</text>
+  </g>
+</svg>

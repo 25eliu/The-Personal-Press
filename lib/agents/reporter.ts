@@ -1,10 +1,15 @@
 import { generateObject, generateText, isStepCount } from 'ai';
 import { openai } from '@ai-sdk/openai';
-import { MODEL, WORD_CAPS } from '@/lib/config';
+import { BRAND, MODEL, WORD_CAPS } from '@/lib/config';
 import { Page, type TPage } from '@/lib/schema';
 import { reporterSystem } from '@/lib/agents/prompts';
 import { buildTakoTools, collectFindings, type Findings } from '@/lib/tako/tools';
 import { normalizeCardSources, normalizeWebResult, validUrl } from '@/lib/tako/normalize';
+import { toolDetail, toolLabel } from '@/lib/tako/labels';
+import { clip, logCall, usageSummary } from '@/lib/log';
+
+/** A single Tako tool call surfaced to the UI ("Using Tako search…"). */
+export type ReporterActivity = { tool: string; label: string; detail?: string };
 
 export function findingsContext(f: Findings): string {
   const cards = f.cards.map((c) => ({
@@ -57,15 +62,23 @@ export function attachArt(page: TPage, f: Findings): TPage {
   return { ...page, articles };
 }
 
+/** Headline used by the degraded fallback page; also the marker for "no content". */
+export const NO_REPORT_HEADLINE = 'No fresh reporting on the wire';
+
 export function emptyPage(topic: string): TPage {
   return {
     topic,
     articles: [{
-      kicker: topic, headline: 'No fresh reporting on the wire', byline: 'Tako Wire',
+      kicker: topic, headline: NO_REPORT_HEADLINE, byline: 'Tako Wire',
       body: 'Our reporters found no new sourced data on this topic for today’s edition.',
-      size: 'brief', sources: [{ name: 'The Daily Tako' }],
+      size: 'brief', sources: [{ name: BRAND }],
     }],
   };
+}
+
+/** A page has real content if any article is not the "no fresh reporting" fallback. */
+export function hasRealContent(page: TPage): boolean {
+  return page.articles.some((a) => a.headline !== NO_REPORT_HEADLINE);
 }
 
 function distillPrompt(topic: string, isFront: boolean, ctx: string): string {
@@ -84,30 +97,62 @@ RESEARCH (JSON):
 ${ctx}`;
 }
 
-export async function runReporter(topic: string, isFront: boolean, masthead: string): Promise<TPage> {
+export async function runReporter(
+  topic: string,
+  isFront: boolean,
+  masthead: string,
+  onActivity?: (a: ReporterActivity) => void,
+  signal?: AbortSignal,
+): Promise<TPage> {
   try {
     const tools = buildTakoTools();
-    const { steps } = await generateText({
+    logCall('reporter.start', { slot: isFront ? 0 : undefined, topic, model: MODEL });
+
+    const { steps, usage } = await generateText({
       model: openai(MODEL),
       system: reporterSystem(masthead),
       prompt: `Report the section: "${topic}". Gather sourced data with the Tako tools.`,
       tools,
       stopWhen: isStepCount(6),
+      abortSignal: signal,
+      onStepFinish: (step) => {
+        for (const call of step.toolCalls ?? []) {
+          const tool = call.toolName;
+          const detail = toolDetail((call as { input?: unknown }).input);
+          logCall('tool.call', { topic, tool, detail: clip(detail) });
+          onActivity?.({ tool, label: toolLabel(tool), detail });
+        }
+      },
     });
 
     const findings = collectFindings(steps);
+    logCall('reporter.done', {
+      topic, cards: findings.cards.length, web: findings.web.length,
+      answers: findings.answers.length, usage: usageSummary(usage),
+    });
+
     if (findings.cards.length === 0 && findings.web.length === 0 && findings.answers.length === 0) {
       return emptyPage(topic);
     }
 
-    const { object } = await generateObject({
+    logCall('distill.start', { topic, model: MODEL });
+    const { object, usage: distillUsage } = await generateObject({
       model: openai(MODEL),
       schema: Page,
       prompt: distillPrompt(topic, isFront, findingsContext(findings)),
+      // OpenAI strict structured outputs reject optional fields (it requires every
+      // property in `required`). Disable strict; zod still validates the result.
+      providerOptions: { openai: { strictJsonSchema: false } },
+      // Distilling a full page from a large research blob occasionally returns an
+      // object that fails validation; a couple of extra retries makes it reliable.
+      maxRetries: 3,
+      abortSignal: signal,
     });
+    logCall('distill.done', { topic, articles: object.articles.length, usage: usageSummary(distillUsage) });
 
     return attachArt(sanitizePage({ ...object, topic }), findings);
-  } catch {
+  } catch (err) {
+    logCall('error', { scope: 'reporter', topic, message: err instanceof Error ? err.message : String(err) });
     return emptyPage(topic);
   }
 }
