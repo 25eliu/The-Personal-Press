@@ -38,22 +38,31 @@ export function useEditionCopilot(
   // mid-animation; outside the provider this is a no-op that resolves instantly.
   const live = useLiveEdit();
 
-  // Shared live state for whichever research action is currently running: the tool
-  // log, the specific outlets being sourced, the streaming answer prose, and a
-  // terminal status line. Only ONE research action may write at a time — enforced by
-  // beginResearchRun() below (it cancels the prior run and fences late writes by id).
-  const [researchLines, setResearchLines] = useState<string[]>([]);
-  const [researchSources, setResearchSources] = useState<string[]>([]);
-  const [researchAnswer, setResearchAnswer] = useState('');
-  const [researchDone, setResearchDone] = useState<string | null>(null);
+  // ONE shared live surface for whichever research action is currently running — the
+  // tool log, the outlets being sourced, the streaming answer prose, and a terminal
+  // status line — tagged with the active run's monotonic id. Only one action writes at
+  // a time (enforced by beginResearchRun() below). Each chat bubble claims its OWN
+  // runId and renders only data carrying that id (see reduceResearchView), so a fresh
+  // bubble never shows the previous run's leftover content sitting on the surface.
+  const [surface, setSurface] = useState<{
+    runId: number;
+    lines: string[];
+    sources: string[];
+    answer: string;
+    done: string | null;
+  }>({ runId: 0, lines: [], sources: [], answer: '', done: null });
 
-  // Reset every research surface before a new action streams into it.
-  const resetResearch = () => {
-    setResearchLines([]);
-    setResearchSources([]);
-    setResearchAnswer('');
-    setResearchDone(null);
-  };
+  // Run ids already claimed by a bubble — seeded with the pre-first-run sentinel 0 so
+  // no bubble ever binds the initial empty surface. Bubbles add their claimed id here.
+  const claimedRunIds = useRef<Set<number>>(new Set([0]));
+
+  // Thin shims preserving the old setter names/signatures so the stream callbacks in
+  // runResearch()/askTako stay unchanged — each just patches one field of the surface.
+  const setResearchLines = (fn: (prev: string[]) => string[]) =>
+    setSurface((s) => ({ ...s, lines: fn(s.lines) }));
+  const setResearchAnswer = (v: string | ((prev: string) => string)) =>
+    setSurface((s) => ({ ...s, answer: typeof v === 'function' ? v(s.answer) : v }));
+  const setResearchDone = (v: string | null) => setSurface((s) => ({ ...s, done: v }));
 
   // Each research/ask action gets its OWN abort controller and a monotonic run id.
   // Sharing one signal/surface (the old bug) let a still-streaming run bleed its
@@ -63,9 +72,10 @@ export function useEditionCopilot(
 
   /**
    * Open a fresh research run: cancel any in-flight one (so two never overlap), wire
-   * it to abort alongside a full regeneration ("New paper"), clear the surface, and
-   * hand back this run's signal plus an `isCurrent()` fence. Every stream callback
-   * guards on `isCurrent()` so a superseded/aborted stream can never mutate the surface.
+   * it to abort alongside a full regeneration ("New paper"), re-tag the surface with a
+   * fresh empty run, and hand back this run's signal plus an `isCurrent()` fence. Every
+   * stream callback guards on `isCurrent()` so a superseded/aborted stream can never
+   * mutate the surface.
    */
   const beginResearchRun = () => {
     researchAbortRef.current?.abort();
@@ -73,21 +83,21 @@ export function useEditionCopilot(
     researchAbortRef.current = controller;
     abortRef.current?.signal.addEventListener('abort', () => controller.abort(), { once: true });
     const runId = ++researchRunId.current;
-    resetResearch();
+    setSurface({ runId, lines: [], sources: [], answer: '', done: null });
     return { signal: controller.signal, isCurrent: () => researchRunId.current === runId };
   };
 
   // Merge newly-discovered source labels, deduped case-insensitively, order-preserving.
   const mergeSources = (incoming: string[]) =>
-    setResearchSources((prev) => {
-      const seen = new Set(prev.map((s) => s.toLowerCase()));
-      const next = [...prev];
-      for (const s of incoming) {
-        if (seen.has(s.toLowerCase())) continue;
-        seen.add(s.toLowerCase());
-        next.push(s);
+    setSurface((s) => {
+      const seen = new Set(s.sources.map((x) => x.toLowerCase()));
+      const next = [...s.sources];
+      for (const x of incoming) {
+        if (seen.has(x.toLowerCase())) continue;
+        seen.add(x.toLowerCase());
+        next.push(x);
       }
-      return next;
+      return { ...s, sources: next };
     });
 
   const getArticle = (slot: number, index: number): TArticle | undefined =>
@@ -353,10 +363,13 @@ export function useEditionCopilot(
     render: ({ status, args }) =>
       createElement(ResearchProgress, {
         title: `Asking Tako: ${args?.query ?? '…'}`,
-        lines: researchLines,
-        sources: researchSources,
-        answer: researchAnswer,
-        done: status === 'complete' ? researchDone ?? 'Done.' : undefined,
+        runId: surface.runId,
+        status,
+        claimed: claimedRunIds.current,
+        lines: surface.lines,
+        sources: surface.sources,
+        answer: surface.answer,
+        done: status === 'complete' ? surface.done ?? 'Done.' : undefined,
       }),
   });
 
@@ -387,10 +400,13 @@ export function useEditionCopilot(
     render: ({ status, args }) =>
       createElement(ResearchProgress, {
         title: `Researching: ${args?.topic ?? '…'}`,
-        lines: researchLines,
-        sources: researchSources,
-        answer: researchAnswer,
-        done: status === 'complete' ? researchDone ?? 'Done.' : undefined,
+        runId: surface.runId,
+        status,
+        claimed: claimedRunIds.current,
+        lines: surface.lines,
+        sources: surface.sources,
+        answer: surface.answer,
+        done: status === 'complete' ? surface.done ?? 'Done.' : undefined,
       }),
   });
 
@@ -438,10 +454,13 @@ export function useEditionCopilot(
     render: ({ status, args }) =>
       createElement(ResearchProgress, {
         title: `Re-researching: ${args?.topic ?? '…'}`,
-        lines: researchLines,
-        sources: researchSources,
-        answer: researchAnswer,
-        done: status === 'complete' ? researchDone ?? 'Done.' : undefined,
+        runId: surface.runId,
+        status,
+        claimed: claimedRunIds.current,
+        lines: surface.lines,
+        sources: surface.sources,
+        answer: surface.answer,
+        done: status === 'complete' ? surface.done ?? 'Done.' : undefined,
       }),
   });
 
@@ -493,10 +512,13 @@ export function useEditionCopilot(
     render: ({ status, args }) =>
       createElement(ResearchProgress, {
         title: `Re-researching story: ${args?.topic ?? '…'}`,
-        lines: researchLines,
-        sources: researchSources,
-        answer: researchAnswer,
-        done: status === 'complete' ? researchDone ?? 'Done.' : undefined,
+        runId: surface.runId,
+        status,
+        claimed: claimedRunIds.current,
+        lines: surface.lines,
+        sources: surface.sources,
+        answer: surface.answer,
+        done: status === 'complete' ? surface.done ?? 'Done.' : undefined,
       }),
   });
 
@@ -527,9 +549,12 @@ export function useEditionCopilot(
     render: ({ status, args }) =>
       createElement(ResearchProgress, {
         title: `Refreshing chart on page ${args?.slot ?? '…'}`,
-        lines: researchLines,
-        sources: researchSources,
-        done: status === 'complete' ? researchDone ?? 'Done.' : undefined,
+        runId: surface.runId,
+        status,
+        claimed: claimedRunIds.current,
+        lines: surface.lines,
+        sources: surface.sources,
+        done: status === 'complete' ? surface.done ?? 'Done.' : undefined,
       }),
   });
 }
