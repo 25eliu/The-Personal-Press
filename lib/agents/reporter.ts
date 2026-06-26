@@ -1,4 +1,4 @@
-import { generateObject, generateText, isStepCount } from 'ai';
+import { generateObject, generateText, isStepCount, streamObject } from 'ai';
 import { openai } from '@ai-sdk/openai';
 import { BRAND, MODEL, WORD_CAPS } from '@/lib/config';
 import { Page, type TPage } from '@/lib/schema';
@@ -8,6 +8,7 @@ import { normalizeCardSources, normalizeWebResult, validUrl } from '@/lib/tako/n
 import { toolDetail, toolLabel } from '@/lib/tako/labels';
 import type { TodayContext } from '@/lib/time/clock';
 import { clip, logCall, usageSummary } from '@/lib/log';
+import { draftFromPartial } from '@/lib/agents/draft';
 
 /** A single Tako tool call surfaced to the UI ("Using Tako search…"). */
 export type ReporterActivity = { tool: string; label: string; detail?: string };
@@ -120,7 +121,7 @@ export async function runReporter(
   today: TodayContext,
   opts: ReporterOpts = {},
 ): Promise<TPage> {
-  const { context, onActivity, signal } = opts;
+  const { context, onActivity, onDraftToken, signal } = opts;
   try {
     const tools = buildTakoTools();
     logCall('reporter.start', { slot: isFront ? 0 : undefined, topic, model: MODEL });
@@ -153,16 +154,38 @@ export async function runReporter(
     }
 
     const research = findingsContext(findings);
-    logCall('distill.start', { topic, model: MODEL });
-    const { object, usage: distillUsage } = await generateObject({
-      model: openai(MODEL),
-      schema: Page,
-      prompt: distillPrompt(topic, isFront, research, today, context),
-      providerOptions: { openai: { strictJsonSchema: false } },
-      maxRetries: 3,
-      abortSignal: signal,
-    });
-    logCall('distill.done', { topic, articles: object.articles.length, usage: usageSummary(distillUsage) });
+    logCall('distill.start', { topic, model: MODEL, stream: Boolean(onDraftToken) });
+    let object: TPage;
+    if (onDraftToken) {
+      const result = streamObject({
+        model: openai(MODEL),
+        schema: Page,
+        prompt: distillPrompt(topic, isFront, research, today, context),
+        providerOptions: { openai: { strictJsonSchema: false } },
+        abortSignal: signal,
+      });
+      let lastDraft = '';
+      for await (const partial of result.partialObjectStream) {
+        if (signal?.aborted) break;
+        const full = draftFromPartial(partial as { articles?: Array<{ headline?: string; body?: string }> });
+        if (full.length > lastDraft.length && full.startsWith(lastDraft)) {
+          onDraftToken(full.slice(lastDraft.length));
+          lastDraft = full;
+        }
+      }
+      object = await result.object;            // validated against Page
+    } else {
+      const r = await generateObject({
+        model: openai(MODEL),
+        schema: Page,
+        prompt: distillPrompt(topic, isFront, research, today, context),
+        providerOptions: { openai: { strictJsonSchema: false } },
+        maxRetries: 3,
+        abortSignal: signal,
+      });
+      object = r.object;
+    }
+    logCall('distill.done', { topic, articles: object.articles.length });
     return attachArt(sanitizePage({ ...object, topic }), findings);
   } catch (err) {
     logCall('error', { scope: 'reporter', topic, message: err instanceof Error ? err.message : String(err) });

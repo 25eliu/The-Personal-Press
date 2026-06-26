@@ -14,5 +14,6 @@ export type GenerateEvent =
   | { type: 'section_started'; slot: number; topic: string }
   | { type: 'tool_activity'; slot: number; topic: string; tool: string; label: string; detail?: string }
   | { type: 'section_done'; slot: number; page: TPage }
+  | { type: 'token'; slot: number; text: string }
   | { type: 'error'; slot?: number; message: string }
   | { type: 'complete'; newspaper: TNewspaper };

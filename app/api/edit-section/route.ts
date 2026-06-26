@@ -49,6 +49,7 @@ export async function POST(req: Request) {
         const page = await runReporter(topic, isFront, BRAND, todayContext(), {
           context,
           onActivity: (a) => safeEnqueue({ type: 'tool_activity', slot: 0, topic, tool: a.tool, label: a.label, detail: a.detail }),
+          onDraftToken: (t) => safeEnqueue({ type: 'token', slot: 0, text: t }),
           signal,
         });
         if (!hasRealContent(page)) {
