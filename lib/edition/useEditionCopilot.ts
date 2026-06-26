@@ -6,7 +6,7 @@ import type { TArticle } from '@/lib/schema';
 import { validateArticlePatch, validatePage } from '@/lib/edition/validate';
 import { hasRealContent } from '@/lib/agents/reporter';
 import { streamEditSection } from '@/lib/stream/editClient';
-import { sectionToContext } from '@/lib/edition/grounding';
+import { sectionToContext, shortSectionTitle } from '@/lib/edition/grounding';
 import { streamAskTako } from '@/lib/stream/askClient';
 import type { AskSource } from '@/lib/stream/askEvents';
 import { ResearchProgress } from '@/components/copilot/ResearchProgress';
@@ -337,9 +337,10 @@ export function useEditionCopilot(
       const v = validatePage(page);
       if (!v.ok) return v.error;
       if (!hasRealContent(v.page)) return `No fresh reporting found for “${topic}”.`;
-      dispatch({ type: 'ADD_SECTION', page: v.page, position });
-      setResearchDone(`Added “${v.page.topic}”.`);
-      return `Added a new section: “${v.page.topic}”.`;
+      const finalPage = { ...v.page, topic: shortSectionTitle(v.page.topic) };
+      dispatch({ type: 'ADD_SECTION', page: finalPage, position });
+      setResearchDone(`Added “${finalPage.topic}”.`);
+      return `Added a new section: “${finalPage.topic}”.`;
     },
     render: ({ status, args }) =>
       createElement(ResearchProgress, {
@@ -369,9 +370,10 @@ export function useEditionCopilot(
       const v = validatePage(fresh);
       if (!v.ok) return v.error;
       if (!hasRealContent(v.page)) return `No fresh reporting found for “${topic}”.`;
-      dispatch({ type: 'REPLACE_PAGE', slot, page: v.page });
-      setResearchDone(`Replaced “${page.topic}” → “${v.page.topic}”.`);
-      return `Replaced the “${page.topic}” section with freshly-researched reporting: “${v.page.topic}”.`;
+      const finalPage = { ...v.page, topic: shortSectionTitle(v.page.topic) };
+      dispatch({ type: 'REPLACE_PAGE', slot, page: finalPage });
+      setResearchDone(`Replaced “${page.topic}” → “${finalPage.topic}”.`);
+      return `Replaced the “${page.topic}” section with freshly-researched reporting: “${finalPage.topic}”.`;
     },
     render: ({ status, args }) =>
       createElement(ResearchProgress, {
