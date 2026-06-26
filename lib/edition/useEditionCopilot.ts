@@ -6,10 +6,11 @@ import type { TArticle } from '@/lib/schema';
 import { validateArticlePatch, validatePage } from '@/lib/edition/validate';
 import { hasRealContent } from '@/lib/agents/reporter';
 import { streamEditSection } from '@/lib/stream/editClient';
-import { sectionToContext, shortSectionTitle } from '@/lib/edition/grounding';
+import { articleToContext, sectionToContext, shortSectionTitle } from '@/lib/edition/grounding';
 import { streamAskTako } from '@/lib/stream/askClient';
 import type { AskSource } from '@/lib/stream/askEvents';
 import { ResearchProgress } from '@/components/copilot/ResearchProgress';
+import { useLiveEdit } from '@/lib/edition/liveEdit';
 
 const SIZES = ['lead', 'standard', 'brief'] as const;
 
@@ -32,9 +33,15 @@ export function useEditionCopilot(
     stateRef.current = state;
   });
 
+  // Drives the in-paper "person editing" animation (erase → type). The real
+  // dispatch is deferred until live.play() resolves so the page doesn't repaginate
+  // mid-animation; outside the provider this is a no-op that resolves instantly.
+  const live = useLiveEdit();
+
   // Shared live state for whichever research action is currently running: the tool
   // log, the specific outlets being sourced, the streaming answer prose, and a
-  // terminal status line. Only one research action runs at a time.
+  // terminal status line. Only ONE research action may write at a time — enforced by
+  // beginResearchRun() below (it cancels the prior run and fences late writes by id).
   const [researchLines, setResearchLines] = useState<string[]>([]);
   const [researchSources, setResearchSources] = useState<string[]>([]);
   const [researchAnswer, setResearchAnswer] = useState('');
@@ -46,6 +53,28 @@ export function useEditionCopilot(
     setResearchSources([]);
     setResearchAnswer('');
     setResearchDone(null);
+  };
+
+  // Each research/ask action gets its OWN abort controller and a monotonic run id.
+  // Sharing one signal/surface (the old bug) let a still-streaming run bleed its
+  // content and sources into the next action's chat bubble.
+  const researchAbortRef = useRef<AbortController | null>(null);
+  const researchRunId = useRef(0);
+
+  /**
+   * Open a fresh research run: cancel any in-flight one (so two never overlap), wire
+   * it to abort alongside a full regeneration ("New paper"), clear the surface, and
+   * hand back this run's signal plus an `isCurrent()` fence. Every stream callback
+   * guards on `isCurrent()` so a superseded/aborted stream can never mutate the surface.
+   */
+  const beginResearchRun = () => {
+    researchAbortRef.current?.abort();
+    const controller = new AbortController();
+    researchAbortRef.current = controller;
+    abortRef.current?.signal.addEventListener('abort', () => controller.abort(), { once: true });
+    const runId = ++researchRunId.current;
+    resetResearch();
+    return { signal: controller.signal, isCurrent: () => researchRunId.current === runId };
   };
 
   // Merge newly-discovered source labels, deduped case-insensitively, order-preserving.
@@ -64,13 +93,12 @@ export function useEditionCopilot(
   const getArticle = (slot: number, index: number): TArticle | undefined =>
     stateRef.current.pages[slot]?.articles[index];
 
-  const editSignal = () => abortRef.current?.signal;
-
   const runResearch = async (topic: string, isFront: boolean, context?: string) => {
-    resetResearch();
+    const { signal, isCurrent } = beginResearchRun();
     return streamEditSection(
       { topic, isFront, context },
       (e) => {
+        if (!isCurrent()) return;   // a superseded run must not touch the shared surface
         if (e.type === 'tool_activity') {
           // A 'sources' dispatch feeds the outlet chips; a real tool call feeds the log.
           if (e.sources?.length) mergeSources(e.sources);
@@ -81,7 +109,7 @@ export function useEditionCopilot(
           setResearchDone(`⚠ ${e.message}`);
         }
       },
-      editSignal(),
+      signal,
     );
   };
 
@@ -151,7 +179,18 @@ export function useEditionCopilot(
       if (!changed) return 'That matches the current text — nothing changed. Provide different wording.';
       const result = validateArticlePatch(current, patch);
       if (!result.ok) return result.error;
-      dispatch({ type: 'EDIT_ARTICLE', slot, index, patch });
+      // Body rewrites play the live erase-then-type animation, then commit. Other
+      // field-only edits (headline, kicker…) apply instantly.
+      if (patch.body !== undefined && patch.body !== current.body) {
+        try {
+          await live.play({ slot, articleIndex: index, oldBody: current.body, newBody: patch.body });
+          dispatch({ type: 'EDIT_ARTICLE', slot, index, patch });
+        } finally {
+          live.end();
+        }
+      } else {
+        dispatch({ type: 'EDIT_ARTICLE', slot, index, patch });
+      }
       return `Updated “${result.article.headline}”.`;
     },
     render: ({ status, args }) =>
@@ -277,13 +316,14 @@ export function useEditionCopilot(
       { name: 'query', type: 'string', description: 'The factual question to research with Tako.', required: true },
     ],
     handler: async ({ query }) => {
-      resetResearch();
+      const { signal, isCurrent } = beginResearchRun();
       let answer = '';
       let citations: AskSource[] = [];
       try {
         await streamAskTako(
           query,
           (e) => {
+            if (!isCurrent()) return;   // a superseded run must not touch the shared surface
             if (e.type === 'tool') {
               setResearchLines((prev) => [...prev, e.detail ? `${e.label} — “${e.detail}”` : e.label]);
             } else if (e.type === 'sources') {
@@ -299,7 +339,7 @@ export function useEditionCopilot(
               setResearchDone(`⚠ ${e.message}`);
             }
           },
-          editSignal(),
+          signal,
         );
       } catch (err) {
         setResearchDone('⚠ Tako lookup failed.');
@@ -368,19 +408,91 @@ export function useEditionCopilot(
     handler: async ({ slot, topic }) => {
       const page = stateRef.current.pages[slot];
       if (!page) return `No section at slot ${slot}.`;
-      const fresh = await runResearch(topic, slot === 0, sectionToContext(page));
-      if (!fresh) return `No fresh reporting found for “${topic}”.`;
-      const v = validatePage(fresh);
-      if (!v.ok) return v.error;
-      if (!hasRealContent(v.page)) return `No fresh reporting found for “${topic}”.`;
-      const finalPage = { ...v.page, topic: shortSectionTitle(v.page.topic) };
-      dispatch({ type: 'REPLACE_PAGE', slot, page: finalPage });
-      setResearchDone(`Replaced “${page.topic}” → “${finalPage.topic}”.`);
-      return `Replaced the “${page.topic}” section with freshly-researched reporting: “${finalPage.topic}”.`;
+      const lead = page.articles[0];
+      // Erase the lead story NOW — title and all — so the reader jumps to the section and
+      // watches it clear out, then the caret waits while we research.
+      const run = live.begin({
+        slot,
+        articleIndex: 0,
+        headline: lead?.headline,
+        dek: lead?.dek,
+        body: lead?.body ?? '',
+      });
+      try {
+        const fresh = await runResearch(topic, slot === 0, sectionToContext(page));
+        if (!fresh) return `No fresh reporting found for “${topic}”.`;
+        const v = validatePage(fresh);
+        if (!v.ok) return v.error;
+        if (!hasRealContent(v.page)) return `No fresh reporting found for “${topic}”.`;
+        const finalPage = { ...v.page, topic: shortSectionTitle(v.page.topic) };
+        const newLead = finalPage.articles[0];
+        await run.erased; // ensure the erase finished before we type the new copy in
+        await live.type(run.id, { headline: newLead?.headline, dek: newLead?.dek, body: newLead?.body ?? '' });
+        dispatch({ type: 'REPLACE_PAGE', slot, page: finalPage });
+        setResearchDone(`Replaced “${page.topic}” → “${finalPage.topic}”.`);
+        return `Replaced the “${page.topic}” section with freshly-researched reporting: “${finalPage.topic}”.`;
+      } finally {
+        live.end(run.id); // commit on success; restore the original on any early return
+      }
     },
     render: ({ status, args }) =>
       createElement(ResearchProgress, {
         title: `Re-researching: ${args?.topic ?? '…'}`,
+        lines: researchLines,
+        sources: researchSources,
+        answer: researchAnswer,
+        done: status === 'complete' ? researchDone ?? 'Done.' : undefined,
+      }),
+  });
+
+  useCopilotAction({
+    name: 'replaceArticleWithResearch',
+    description:
+      'When the reader wants ONE specific story within a section changed/updated with fresh ' +
+      'data but does NOT give you the new text, re-research just that story with Tako and replace ' +
+      'ONLY that article — the rest of the page and the section title stay intact. Use this ' +
+      '(not replaceWithResearch) whenever the request points at a single story rather than the ' +
+      'whole section.',
+    parameters: [
+      { name: 'slot', type: 'number', description: 'Page slot (0 = front page).', required: true },
+      { name: 'index', type: 'number', description: '0-based article index of the story to replace.', required: true },
+      { name: 'topic', type: 'string', description: 'Refined research angle for THIS story (short, headline-style; include league/place/year for precision).', required: true },
+    ],
+    handler: async ({ slot, index, topic }) => {
+      const page = stateRef.current.pages[slot];
+      const current = page?.articles[index];
+      if (!page || !current) return `No article at (slot ${slot}, index ${index}).`;
+      // Erase this story NOW — title and all — so the reader jumps to it and watches it
+      // clear out, then the caret waits while we research just this story.
+      const run = live.begin({
+        slot,
+        articleIndex: index,
+        headline: current.headline,
+        dek: current.dek,
+        body: current.body,
+      });
+      try {
+        const fresh = await runResearch(topic, slot === 0, articleToContext(current, page.topic));
+        if (!fresh) return `No fresh reporting found for “${topic}”.`;
+        const v = validatePage(fresh);
+        if (!v.ok) return v.error;
+        if (!hasRealContent(v.page)) return `No fresh reporting found for “${topic}”.`;
+        // Take the fresh page's primary story, but keep THIS article's size so the page
+        // layout (lead/standard/brief mix) is preserved.
+        const picked = v.page.articles.find((a) => a.size === 'lead') ?? v.page.articles[0];
+        const article: TArticle = { ...picked, size: current.size };
+        await run.erased; // ensure the erase finished before we type the new copy in
+        await live.type(run.id, { headline: article.headline, dek: article.dek, body: article.body });
+        dispatch({ type: 'REPLACE_ARTICLE', slot, index, article });
+        setResearchDone(`Updated the “${article.headline}” story.`);
+        return `Replaced that story with freshly-researched reporting: “${article.headline}”.`;
+      } finally {
+        live.end(run.id); // commit on success; restore the original on any early return
+      }
+    },
+    render: ({ status, args }) =>
+      createElement(ResearchProgress, {
+        title: `Re-researching story: ${args?.topic ?? '…'}`,
         lines: researchLines,
         sources: researchSources,
         answer: researchAnswer,
