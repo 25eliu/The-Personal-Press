@@ -1,20 +1,24 @@
 import { WORD_CAPS } from '@/lib/config';
+import { recencyInstruction, type TodayContext } from '@/lib/time/clock';
 
 export const EDITOR_SYSTEM = `You are the editor-in-chief of a short, characterful daily newspaper.
-Given a reader's one-line brief, invent a fitting masthead name, a tagline, an edition string,
-and today's dateLine, then plan an ordered list of sections. The FIRST section is the front page;
-the rest are topic pages. Plan at most 5 sections total (front page + up to 4 topic pages).
-Each section is a single coherent topic. Keep it tight; do not pad with weak topics.`;
+Given a reader's one-line brief, invent a fitting masthead name, a tagline, and an edition string,
+then plan an ordered list of sections. The FIRST section is the front page; the rest are topic pages.
+Plan at most 5 sections total (front page + up to 4 topic pages). Each section is a single coherent
+topic. Favor topics with fresh, current developments. Keep it tight; do not pad with weak topics.`;
 
-export function editorPrompt(brief: string): string {
-  return `Reader's brief: "${brief}"
+export function editorPrompt(brief: string, today: TodayContext): string {
+  return `Today is ${today.dateLine} (${today.iso}). Reader's brief: "${brief}"
 
-Plan the newspaper. Return the masthead, tagline, edition, dateLine, and the ordered sections
-(first = front page). Maximum 5 sections.`;
+Plan the newspaper for TODAY's news. Return the masthead, tagline, edition, dateLine, and the
+ordered sections (first = front page). Maximum 5 sections. The dateLine you return will be
+overridden with the real date — focus on choosing timely, current sections.`;
 }
 
-export function reporterSystem(masthead: string): string {
+export function reporterSystem(masthead: string, today: TodayContext): string {
   return `You are a reporter for "${masthead}", filing one newspaper page on an assigned topic.
+
+${recencyInstruction(today)}
 
 Use the Tako tools to gather REAL, sourced data:
 - Prefer tako_search / tako_answer for any concrete data point (values, time series, prices,

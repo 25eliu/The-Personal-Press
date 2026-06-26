@@ -8,8 +8,13 @@ export type LogKind =
   | 'reporter.start'
   | 'reporter.done'
   | 'tool.call'
+  | 'synthesize.start'
+  | 'synthesize.done'
+  | 'synthesize.fallback'
   | 'distill.start'
   | 'distill.done'
+  | 'ask.start'
+  | 'ask.done'
   | 'error';
 
 type Usage = { inputTokens?: number; outputTokens?: number; totalTokens?: number } | undefined;

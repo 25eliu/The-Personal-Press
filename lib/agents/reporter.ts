@@ -6,6 +6,8 @@ import { reporterSystem } from '@/lib/agents/prompts';
 import { buildTakoTools, collectFindings, type Findings } from '@/lib/tako/tools';
 import { normalizeCardSources, normalizeWebResult, validUrl } from '@/lib/tako/normalize';
 import { toolDetail, toolLabel } from '@/lib/tako/labels';
+import { bundlesContext, synthesizeBundles, type StoryBundle } from '@/lib/agents/synthesize';
+import type { TodayContext } from '@/lib/time/clock';
 import { clip, logCall, usageSummary } from '@/lib/log';
 
 /** A single Tako tool call surfaced to the UI ("Using Tako search…"). */
@@ -81,17 +83,30 @@ export function hasRealContent(page: TPage): boolean {
   return page.articles.some((a) => a.headline !== NO_REPORT_HEADLINE);
 }
 
-function distillPrompt(topic: string, isFront: boolean, ctx: string): string {
+function distillPrompt(
+  topic: string,
+  isFront: boolean,
+  ctx: string,
+  today: TodayContext,
+  paired: boolean,
+): string {
   const layout = isFront
     ? 'This is the FRONT PAGE: produce exactly one "lead" article plus 2 or 3 "brief" articles.'
     : 'This is a TOPIC PAGE: produce 2 to 4 articles sized "standard" or "brief" (at most one "lead").';
-  return `Topic: "${topic}"
+  const sourceShape = paired
+    ? `The research below is pre-clustered into story bundles that already pair Tako numbers ` +
+      `(dataPoints) with web narrative. Write one article per bundle where possible, leading with ` +
+      `the number/finding and weaving in the narrative. Bundles are ordered freshest-first — lead ` +
+      `with the freshest. If a bundle is not fresh it carries an "asOf" stamp; when you use it, work ` +
+      `that "as of <date>" into the kicker or dek so the reader knows it is not from today.`
+    : `Write the page strictly from the raw research below, preferring the most recent sources.`;
+  return `Today is ${today.dateLine}. Topic: "${topic}"
 ${layout}
 
-Write the page strictly from the research below. Every article MUST include at least one source
-drawn from this research. Do not invent facts or sources. Respect word caps
-(lead <= ${WORD_CAPS.lead}, standard <= ${WORD_CAPS.standard}, brief <= ${WORD_CAPS.brief}).
-If the research is thin, write fewer, shorter articles rather than padding.
+${sourceShape}
+Every article MUST include at least one source drawn from this research. Do not invent facts,
+sources, or dates. Respect word caps (lead <= ${WORD_CAPS.lead}, standard <= ${WORD_CAPS.standard},
+brief <= ${WORD_CAPS.brief}). If the research is thin, write fewer, shorter articles rather than padding.
 
 RESEARCH (JSON):
 ${ctx}`;
@@ -101,6 +116,7 @@ export async function runReporter(
   topic: string,
   isFront: boolean,
   masthead: string,
+  today: TodayContext,
   onActivity?: (a: ReporterActivity) => void,
   signal?: AbortSignal,
 ): Promise<TPage> {
@@ -110,8 +126,8 @@ export async function runReporter(
 
     const { steps, usage } = await generateText({
       model: openai(MODEL),
-      system: reporterSystem(masthead),
-      prompt: `Report the section: "${topic}". Gather sourced data with the Tako tools.`,
+      system: reporterSystem(masthead, today),
+      prompt: `Report the section: "${topic}" as of ${today.dateLine}. Gather the LATEST sourced data with the Tako tools.`,
       tools,
       stopWhen: isStepCount(6),
       abortSignal: signal,
@@ -135,11 +151,25 @@ export async function runReporter(
       return emptyPage(topic);
     }
 
-    logCall('distill.start', { topic, model: MODEL });
+    // Pair Tako numbers with web narrative into freshness-ranked story bundles. If the
+    // synthesis call fails, fall back to the raw findings so the paper never breaks.
+    let research = findingsContext(findings);
+    let paired = false;
+    try {
+      const bundles: StoryBundle[] = await synthesizeBundles(topic, findings, today, signal);
+      if (bundles.length > 0) {
+        research = bundlesContext(bundles);
+        paired = true;
+      }
+    } catch (err) {
+      logCall('synthesize.fallback', { topic, message: err instanceof Error ? err.message : String(err) });
+    }
+
+    logCall('distill.start', { topic, model: MODEL, paired });
     const { object, usage: distillUsage } = await generateObject({
       model: openai(MODEL),
       schema: Page,
-      prompt: distillPrompt(topic, isFront, findingsContext(findings)),
+      prompt: distillPrompt(topic, isFront, research, today, paired),
       // OpenAI strict structured outputs reject optional fields (it requires every
       // property in `required`). Disable strict; zod still validates the result.
       providerOptions: { openai: { strictJsonSchema: false } },
