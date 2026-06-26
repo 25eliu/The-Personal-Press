@@ -15,8 +15,11 @@ export function takoSearchGuidance(): string {
 - The current year is appended for you automatically — don't add it. DO name the exact
   season / edition / period you want. Use an explicit PAST year only when you genuinely
   want historical data.
-- Make one or two targeted tako_search calls, then call tako_contents with the best
-  card's webpage_url to pull its raw numbers (so a table can be built from them).
+- Make a couple of targeted tako_search calls, each on a DIFFERENT facet of the topic
+  (distinct metric / sub-angle / entity) so you gather a VARIED set of cards — not the same
+  card again. A section becomes several stories, and each one should be able to show its own
+  distinct chart. Then call tako_contents with the best card's webpage_url to pull its raw
+  numbers (so a table can be built from them).
 - Prefer cards whose title/description match the live subject; ignore stale-looking ones.
 - NEVER invent facts. Everything must trace to a returned card or web result.`;
 }

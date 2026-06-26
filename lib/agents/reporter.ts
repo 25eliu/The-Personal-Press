@@ -50,21 +50,59 @@ export function sanitizePage(page: TPage): TPage {
   return { ...page, articles };
 }
 
+/**
+ * Match Tako chart cards to the page's articles so each chart image appears AT MOST ONCE
+ * per section — no story shows the same card twice. Tako can return the same card across
+ * several searches, so the pool is first deduped by image_url; charts the distill step
+ * already named are honoured and excluded from reuse. Assignment is a global greedy
+ * best-match (strongest keyword overlap wins first) rather than per-article independent
+ * picks, so two stories can't both grab the one card they happen to share. Pure: returns a
+ * new page, never mutates the input.
+ */
 export function attachArt(page: TPage, f: Findings): TPage {
-  const cardsWithArt = f.cards.filter((c) => validUrl(c.image_url));
-  const articles = page.articles.map((a) => {
-    if (a.chartImageUrl) return a;
+  // Dedup the card pool by image_url; keep the first occurrence of each distinct chart.
+  const pool: { img: string; embed?: string; kw: Set<string> }[] = [];
+  const seenImg = new Set<string>();
+  for (const c of f.cards) {
+    const img = validUrl(c.image_url);
+    if (!img || seenImg.has(img)) continue;
+    seenImg.add(img);
+    pool.push({ img, embed: validUrl(c.embed_url), kw: keywords(`${c.title ?? ''} ${c.description ?? ''}`) });
+  }
+
+  // Charts already on the page (model-named in distill) are kept and never re-handed out.
+  const used = new Set<string>();
+  for (const a of page.articles) {
+    const existing = validUrl(a.chartImageUrl);
+    if (existing) used.add(existing);
+  }
+
+  // Score every (chart-less article × pooled card) pair by keyword overlap.
+  const pairs: { ai: number; pi: number; score: number }[] = [];
+  page.articles.forEach((a, ai) => {
+    if (a.chartImageUrl) return; // already has a chart
     const aKw = keywords(`${a.headline} ${a.kicker}`);
-    let best: { score: number; img?: string; embed?: string } = { score: 0 };
-    for (const c of cardsWithArt) {
-      const cKw = keywords(`${c.title ?? ''} ${c.description ?? ''}`);
+    pool.forEach((card, pi) => {
       let score = 0;
-      for (const k of aKw) if (cKw.has(k)) score++;
-      if (score > best.score) {
-        best = { score, img: validUrl(c.image_url), embed: validUrl(c.embed_url) };
-      }
-    }
-    return best.score > 0 ? { ...a, chartImageUrl: best.img, chartEmbedUrl: best.embed } : a;
+      for (const k of aKw) if (card.kw.has(k)) score++;
+      if (score > 0) pairs.push({ ai, pi, score });
+    });
+  });
+
+  // Greedy: strongest matches first; each article and each card image used at most once.
+  pairs.sort((x, y) => y.score - x.score);
+  const assigned = new Map<number, { img: string; embed?: string }>();
+  for (const { ai, pi } of pairs) {
+    if (assigned.has(ai)) continue;
+    const card = pool[pi];
+    if (used.has(card.img)) continue;
+    assigned.set(ai, { img: card.img, embed: card.embed });
+    used.add(card.img);
+  }
+
+  const articles = page.articles.map((a, ai) => {
+    const pick = assigned.get(ai);
+    return pick ? { ...a, chartImageUrl: pick.img, chartEmbedUrl: pick.embed } : a;
   });
   return { ...page, articles };
 }
