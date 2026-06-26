@@ -4,8 +4,9 @@ import type { GenerateEvent } from '@/lib/stream/events';
 import type { TNewspaper } from '@/lib/schema';
 import { streamGenerate } from '@/lib/stream/client';
 import { editionReducer, initialEditionState } from '@/lib/edition/state';
-import { isExampleBrief } from '@/lib/edition/examples';
+import { isSuggestedBrief } from '@/lib/edition/dailyBriefs';
 import { getCachedEdition, setCachedEdition } from '@/lib/edition/exampleCache';
+import { replayCachedEdition } from '@/lib/edition/replayCache';
 import { playDemo } from '@/lib/demo/sample';
 import { BriefInput } from '@/components/BriefInput';
 import { BWToggle } from '@/components/BWToggle';
@@ -14,6 +15,7 @@ import { BuildStatus, type BuildStage } from '@/components/build/BuildStatus';
 import { NewspaperView } from '@/components/newspaper/NewspaperView';
 import { CopilotKit } from '@copilotkit/react-core';
 import { CopilotBridge } from '@/components/copilot/CopilotBridge';
+import { LiveEditProvider } from '@/lib/edition/liveEdit';
 
 type Phase = 'idle' | 'typesetting' | 'printing' | 'reading';
 
@@ -53,6 +55,12 @@ export function DailyTako() {
   // The desk is only present while reading; it auto-opens (defaultOpen) unless the
   // reader has closed it. This drives the press floor sliding left to make room.
   const deskOpen = phase === 'reading' && (deskToggle ?? true);
+  // How the press floor reserves the Copy Desk's horizontal space. The reserve total
+  // is the SAME while loading and reading, so the spread's size never changes — only
+  // its position: centred while printing ('loading'), shifted left once the desk
+  // reveals ('desk-open'). Closing the desk releases the reserve ('full').
+  const floorState: 'idle' | 'loading' | 'desk-open' | 'full' =
+    phase === 'idle' ? 'idle' : building ? 'loading' : deskOpen ? 'desk-open' : 'full';
 
   // Plain-language build telemetry for the press console.
   const pagesTotal = plan.length;
@@ -117,25 +125,22 @@ export function DailyTako() {
     return abortRef.current.signal;
   }
 
-  // Replay a cached example edition instantly — no API calls, just a quick "printing"
-  // beat before the paper is on screen.
-  function replayCached(b: string, newspaper: TNewspaper) {
-    abortRef.current?.abort();
-    dispatch({ type: 'RESET' });
-    setError(null); setActivity([]); setDeskToggle(null);
+  // Replay a cached example edition with no API calls — but route it through the SAME
+  // live-build animation as a fresh run, just compressed. So a cached example still shows
+  // the wire ticker and press progress as a brief loading buffer before the paper lands.
+  async function replayCached(b: string, newspaper: TNewspaper) {
+    const signal = resetForRun();
     localStorage.setItem('tako-brief', b);
     setBrief(b);
-    setPhase('printing');
-    dispatch({ type: 'COMPLETE', newspaper });
-    setTimeout(() => setPhase('reading'), 600);
+    await replayCachedEdition(newspaper, onEvent, () => signal.aborted);
   }
 
   async function start(b: string) {
     // Suggested example briefs are cached: replay instantly if we have a fresh one,
     // otherwise generate once and cache the result for next time.
-    const cached = isExampleBrief(b) ? getCachedEdition(b) : null;
+    const cached = isSuggestedBrief(b) ? getCachedEdition(b) : null;
     if (cached) {
-      replayCached(b, cached);
+      await replayCached(b, cached);
       return;
     }
     const signal = resetForRun();
@@ -144,7 +149,7 @@ export function DailyTako() {
     let finalPaper: TNewspaper | null = null;
     try {
       await streamGenerate(b, (e) => { if (e.type === 'complete') finalPaper = e.newspaper; onEvent(e); }, signal);
-      if (finalPaper && isExampleBrief(b)) setCachedEdition(b, finalPaper);
+      if (finalPaper && isSuggestedBrief(b)) setCachedEdition(b, finalPaper);
     } catch (err) {
       if (!(err instanceof DOMException && err.name === 'AbortError')) {
         setError(err instanceof Error ? err.message : 'Something went wrong.');
@@ -158,7 +163,15 @@ export function DailyTako() {
   }
 
   return (
-    <main className="press-floor relative flex min-h-screen flex-col items-center gap-4 p-5" data-desk-open={deskOpen}>
+    <main
+      // Remount at the idle↔build boundary so the reserved gutter is present from the
+      // FIRST printed frame instead of easing in via the padding transition (which read
+      // as a brief shrink on load). Within a run the key is stable, so closing the desk
+      // while reading still animates the floor expanding.
+      key={phase === 'idle' ? 'idle' : 'press'}
+      className="press-floor relative flex min-h-screen flex-col items-center gap-4 p-5"
+      data-floor-state={floorState}
+    >
       {/* Very light scrim so cream pages pop without hiding the desk. */}
       {phase !== 'idle' && <div className="fixed inset-0 -z-10 bg-black/10" />}
 
@@ -193,6 +206,7 @@ export function DailyTako() {
       )}
 
       {phase !== 'idle' && (
+        <LiveEditProvider>
         <CopilotKit runtimeUrl="/api/copilotkit" showDevConsole={false}>
           {building && (
             <div className="flex w-full max-w-[1560px] flex-col items-center gap-2">
@@ -219,6 +233,7 @@ export function DailyTako() {
             onOpenChange={setDeskToggle}
           />
         </CopilotKit>
+        </LiveEditProvider>
       )}
     </main>
   );

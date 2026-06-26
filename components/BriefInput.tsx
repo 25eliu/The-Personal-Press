@@ -1,10 +1,28 @@
 'use client';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
-import { EXAMPLE_BRIEFS as EXAMPLES } from '@/lib/edition/examples';
+import { getDailyBriefs } from '@/lib/edition/examples';
+import { loadDailyBriefs } from '@/lib/edition/dailyBriefs';
+
+// Skeleton pill widths while today's wire is pulled — varied so it reads as headlines.
+const SKELETON_WIDTHS = [116, 138, 96, 124];
 
 export function BriefInput({ initial, onSubmit }: { initial: string; onSubmit: (brief: string) => void }) {
   const [value, setValue] = useState(initial);
+  // null = still pulling today's current-event briefs (shows the shimmer below).
+  const [examples, setExamples] = useState<string[] | null>(null);
+
+  useEffect(() => {
+    const ac = new AbortController();
+    let live = true;
+    // Always hold the shimmer for a short beat — even when today's set is already cached
+    // — so it reads as "pulling today's wire", then resolves quickly.
+    const buffer = new Promise((r) => setTimeout(r, 600));
+    Promise.all([loadDailyBriefs(ac.signal), buffer])
+      .then(([briefs]) => { if (live) setExamples(briefs); })
+      .catch(() => { if (live) setExamples(getDailyBriefs()); });
+    return () => { live = false; ac.abort(); };
+  }, []);
 
   return (
     <motion.form
@@ -41,21 +59,43 @@ export function BriefInput({ initial, onSubmit }: { initial: string; onSubmit: (
           autoFocus
           value={value}
           onChange={(e) => setValue(e.target.value)}
-          placeholder={EXAMPLES[0]}
+          placeholder={(examples ?? getDailyBriefs())[0]}
           className="font-mono-news mt-3 w-full border-0 border-b-2 border-dashed border-[var(--ink)]/50 bg-transparent px-1 py-2 text-center text-lg text-[var(--ink)] placeholder:text-[var(--ink)]/35 focus:border-[var(--accent)] focus:outline-none"
         />
-        <div className="mt-3 flex flex-wrap justify-center gap-2">
-          {EXAMPLES.map((ex) => (
-            <button
-              key={ex}
-              type="button"
-              onClick={() => setValue(ex)}
-              className="font-mono-news rounded-full border border-[var(--ink)]/30 px-2.5 py-0.5 text-[10px] text-[var(--ink)]/60 transition-colors hover:border-[var(--accent)] hover:text-[var(--accent)]"
-            >
-              {ex}
-            </button>
-          ))}
-        </div>
+        {examples === null ? (
+          <div className="mt-3 flex flex-col items-center gap-2">
+            <span className="font-mono-news flex items-center gap-1.5 text-[9px] uppercase tracking-[0.22em] text-[var(--ink)]/45">
+              <span className="live-dot text-[var(--accent)]">●</span> Pulling today&rsquo;s wire
+            </span>
+            <div className="flex flex-wrap justify-center gap-2">
+              {SKELETON_WIDTHS.slice(0, 3).map((w, i) => (
+                <span
+                  key={i}
+                  className="h-[23px] animate-pulse rounded-full border border-[var(--ink)]/15 bg-[var(--ink)]/10"
+                  style={{ width: w, animationDelay: `${i * 140}ms` }}
+                />
+              ))}
+            </div>
+          </div>
+        ) : (
+          <motion.div
+            initial={{ opacity: 0, y: 4 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.35, ease: 'easeOut' }}
+            className="mt-3 flex flex-wrap justify-center gap-2"
+          >
+            {examples.map((ex) => (
+              <button
+                key={ex}
+                type="button"
+                onClick={() => setValue(ex)}
+                className="font-mono-news rounded-full border border-[var(--ink)]/30 px-2.5 py-0.5 text-[10px] text-[var(--ink)]/60 transition-colors hover:border-[var(--accent)] hover:text-[var(--accent)]"
+              >
+                {ex}
+              </button>
+            ))}
+          </motion.div>
+        )}
         <button
           type="submit"
           disabled={!value.trim()}
