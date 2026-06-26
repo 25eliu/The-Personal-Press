@@ -7,22 +7,27 @@ import {
   type Snapshot,
 } from '@/lib/edition/researchView';
 
-const EMPTY: Snapshot = { lines: [], sources: [], answer: '' };
+const EMPTY: Snapshot = { lines: [], sources: [], answer: '', done: '' };
 
 /**
  * Live research surface inside a copilot chat bubble while a Tako-backed action runs
  * (askTako streams an answer token-by-token; addSection/refreshChart stream tool
- * activity). Shows three things as they arrive: the answer prose (with a blinking
- * caret while streaming), the specific outlets being sourced (chips), and a faint
- * wire log of the underlying tool calls.
+ * activity). Shows what that run produces as it arrives: the answer prose (with a
+ * blinking caret while streaming), the outlets being sourced (chips), a faint wire log
+ * of the underlying tool calls, and finally its own terminal/explanation line.
  *
  * All research actions share ONE display surface in useEditionCopilot (CopilotKit's
- * render props carry no per-call id). To stop one run's content from bleeding into
- * another bubble, each research bubble claims exactly one monotonic `runId` (its own
- * run) and renders data only while the surface still carries that id — see
- * `reduceResearchView`. It shows title-only until it claims, so the pre-handler window
- * (when the surface still holds the previous run's content) never leaks. The
- * `editArticle` bubble passes no `runId` and keeps the simpler freeze-on-done path.
+ * render props carry no per-call id). To keep every result contained to its OWN chat
+ * bubble, each research bubble claims exactly one monotonic `runId` (its own run) via
+ * `reduceResearchView` and renders ONLY that run's data — answer, sources, log, AND the
+ * terminal line — freezing the whole snapshot once it completes. It shows title-only
+ * until it claims, so a fresh bubble can never display the previous run's leftovers, and
+ * a finished bubble can never be overwritten by a later run. The `editArticle` bubble
+ * passes no `runId` and keeps the simpler freeze-on-done path.
+ *
+ * In ownership mode `done` is the RAW surface terminal line (string | null); the bubble
+ * decides — from its own claimed run and completion — whether/what to show. In legacy
+ * mode `done` is the already-gated line to show (string | undefined).
  */
 export function ResearchProgress({
   title,
@@ -39,7 +44,7 @@ export function ResearchProgress({
   lines: string[];
   sources?: string[];
   answer?: string;
-  done?: string;
+  done?: string | null;
   runId?: number;
   status?: ResearchStatus;
   surfaceDone?: boolean;
@@ -50,26 +55,41 @@ export function ResearchProgress({
 
   // Ownership mode (research actions): thread the pure reducer through a ref so each
   // bubble shows only its own run's data. Mutating the ref during render mirrors the
-  // freeze-during-render pattern below and is idempotent (StrictMode-safe).
+  // freeze-during-render pattern and is idempotent (StrictMode-safe).
   const viewRef = useRef(initResearchView());
   const pendingClaim = useRef<number | null>(null);
 
-  let shown: Snapshot | null;
-  if (runId === undefined || status === undefined || claimed === undefined) {
-    if (done && frozenLegacy === null) setFrozenLegacy({ lines, sources, answer });
-    shown = frozenLegacy ?? { lines, sources, answer };
+  const ownership = runId !== undefined && status !== undefined && claimed !== undefined;
+
+  let view: Snapshot;
+  let complete: boolean; // this bubble has finished → no caret, show its terminal line
+  let doneLine: string | undefined; // the terminal/explanation line to render, if any
+
+  if (!ownership) {
+    complete = Boolean(done);
+    if (complete && frozenLegacy === null) {
+      setFrozenLegacy({ lines, sources, answer, done: '' });
+    }
+    view = frozenLegacy ?? { lines, sources, answer, done: '' };
+    doneLine = typeof done === 'string' && done ? done : undefined;
   } else {
+    complete = status === 'complete';
     const { next, display, claim } = reduceResearchView(viewRef.current, {
       runId,
       status,
-      live: { lines, sources, answer },
-      done: Boolean(done),
+      live: { lines, sources, answer, done: typeof done === 'string' ? done : '' },
+      complete,
       surfaceDone: Boolean(surfaceDone),
       alreadyClaimed: claimed.has(runId),
     });
     viewRef.current = next;
     if (claim) pendingClaim.current = runId;
-    shown = display;
+    view = display ?? EMPTY;
+    // Only a bubble that actually owned its run shows a terminal line — never a leaked
+    // one. Its own line comes from the frozen snapshot; fall back to "Done." if it
+    // produced content but no explicit line.
+    const hasContent = Boolean(view.answer || view.sources.length || view.lines.length);
+    doneLine = complete && (view.done || hasContent) ? view.done || 'Done.' : undefined;
   }
 
   // Record a claim in the shared set AFTER commit — never mutate shared state during
@@ -81,12 +101,10 @@ export function ResearchProgress({
     }
   });
 
-  const view = shown ?? EMPTY;
-
   return (
     <div className="font-mono-news my-1 rounded-sm border border-[var(--ink)]/30 bg-[var(--paper)] px-3 py-2 text-[11px] text-[var(--ink)] shadow-sm">
       <p className="mb-1.5 flex items-center gap-1.5 uppercase tracking-widest">
-        {!done && <span className="live-dot text-[var(--accent)]">●</span>}
+        {!complete && <span className="live-dot text-[var(--accent)]">●</span>}
         {title}
       </p>
 
@@ -97,7 +115,7 @@ export function ResearchProgress({
           style={{ fontFamily: 'var(--font-body)' }}
         >
           {view.answer}
-          {!done && <span className="live-dot ml-0.5 text-[var(--accent)]">▍</span>}
+          {!complete && <span className="live-dot ml-0.5 text-[var(--accent)]">▍</span>}
         </p>
       )}
 
@@ -131,7 +149,7 @@ export function ResearchProgress({
         </ul>
       )}
 
-      {done && <p className="mt-1.5 font-bold text-[var(--accent)]">{done}</p>}
+      {doneLine && <p className="mt-1.5 font-bold text-[var(--accent)]">{doneLine}</p>}
     </div>
   );
 }

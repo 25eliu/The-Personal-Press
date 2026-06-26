@@ -378,7 +378,7 @@ export function useEditionCopilot(
         lines: surface.lines,
         sources: surface.sources,
         answer: surface.answer,
-        done: status === 'complete' ? surface.done ?? 'Done.' : undefined,
+        done: surface.done,
       }),
   });
 
@@ -416,7 +416,7 @@ export function useEditionCopilot(
         lines: surface.lines,
         sources: surface.sources,
         answer: surface.answer,
-        done: status === 'complete' ? surface.done ?? 'Done.' : undefined,
+        done: surface.done,
       }),
   });
 
@@ -479,7 +479,7 @@ export function useEditionCopilot(
         lines: surface.lines,
         sources: surface.sources,
         answer: surface.answer,
-        done: status === 'complete' ? surface.done ?? 'Done.' : undefined,
+        done: surface.done,
       }),
   });
 
@@ -546,7 +546,7 @@ export function useEditionCopilot(
         lines: surface.lines,
         sources: surface.sources,
         answer: surface.answer,
-        done: status === 'complete' ? surface.done ?? 'Done.' : undefined,
+        done: surface.done,
       }),
   });
 
@@ -590,7 +590,7 @@ export function useEditionCopilot(
         claimed: claimedRunIds.current,
         lines: surface.lines,
         sources: surface.sources,
-        done: status === 'complete' ? surface.done ?? 'Done.' : undefined,
+        done: surface.done,
       }),
   });
 }

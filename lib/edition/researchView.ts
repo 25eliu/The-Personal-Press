@@ -15,10 +15,16 @@
  * pre-handler window (when the surface still holds the previous run's content) renders
  * nothing.
  */
-export type Snapshot = { lines: string[]; sources: string[]; answer: string };
+export type Snapshot = {
+  lines: string[];
+  sources: string[];
+  answer: string;
+  /** This run's terminal line (e.g. "Replaced …" / "Done."); '' while still streaming. */
+  done: string;
+};
 export type ResearchStatus = 'inProgress' | 'executing' | 'complete';
 
-const EMPTY: Snapshot = { lines: [], sources: [], answer: '' };
+const EMPTY: Snapshot = { lines: [], sources: [], answer: '', done: '' };
 
 export type ResearchViewState = {
   /** The surface id this bubble owns, or null until it claims one. */
@@ -33,10 +39,10 @@ export type ResearchViewInput = {
   /** The surface's current run id. */
   runId: number;
   status: ResearchStatus;
-  /** Live surface data (lines/sources/answer) for `runId`. */
+  /** Live surface data (lines/sources/answer/done line) for `runId`. */
   live: Snapshot;
   /** This bubble has reached its terminal (status === 'complete'). */
-  done: boolean;
+  complete: boolean;
   /**
    * The surface itself already carries a terminal status line — i.e. it is the
    * leftover of a finished run, not a fresh one. A bubble must never claim such a
@@ -65,7 +71,7 @@ export function reduceResearchView(
   input: ResearchViewInput,
 ): { next: ResearchViewState; display: Snapshot | null; claim: boolean } {
   let { claimedRunId, lastOwn, frozen } = s;
-  const { runId, status, live, done, surfaceDone, alreadyClaimed } = input;
+  const { runId, status, live, complete, surfaceDone, alreadyClaimed } = input;
 
   // Claim only this bubble's OWN run: its handler is executing (so beginResearchRun has
   // re-tagged the surface to a FRESH run — surfaceDone is false), the id is unclaimed,
@@ -78,7 +84,7 @@ export function reduceResearchView(
     status === 'executing' &&
     !surfaceDone &&
     !alreadyClaimed &&
-    !done
+    !complete
   ) {
     claimedRunId = runId;
     claim = true;
@@ -92,7 +98,7 @@ export function reduceResearchView(
 
   // Freeze on completion: our live data if we still own the surface, else our last owned
   // copy (never a newer run's content).
-  if (done && frozen === null) frozen = owns ? live : lastOwn;
+  if (complete && frozen === null) frozen = owns ? live : lastOwn;
 
   // frozen > owned-live > (superseded) lastOwn > (never owned) nothing.
   const display: Snapshot | null = frozen

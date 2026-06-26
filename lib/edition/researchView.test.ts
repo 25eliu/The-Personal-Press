@@ -19,14 +19,14 @@ class Bubble {
     runId: number,
     status: ResearchStatus,
     live: Snapshot,
-    done = false,
-    surfaceDone = done,
+    complete = false,
+    surfaceDone = complete,
   ): Snapshot | null {
     const { next, display, claim } = reduceResearchView(this.state, {
       runId,
       status,
       live,
-      done,
+      complete,
       surfaceDone,
       alreadyClaimed: this.claimed.has(runId),
     });
@@ -36,11 +36,12 @@ class Bubble {
   }
 }
 
-const snap = (answer: string, sources: string[] = [], lines: string[] = []): Snapshot => ({
-  answer,
-  sources,
-  lines,
-});
+const snap = (
+  answer: string,
+  sources: string[] = [],
+  lines: string[] = [],
+  done = '',
+): Snapshot => ({ answer, sources, lines, done });
 const NBA = snap('Knicks win the title', ['nbcnews.com'], ['Tako: NBA Finals 2026']);
 const POLITICS = snap('Senate passes the bill', ['reuters.com'], ['Tako: politics 2026']);
 
@@ -83,6 +84,22 @@ test('leftover surface marked done is never claimed, even if the claim-set misse
   expect(b.render(2, 'complete', POLITICS, true, false)).toEqual(POLITICS);
 });
 
+test('the terminal/explanation line is frozen per bubble, never a later run’s', () => {
+  const claimed = new Set([0]);
+  const a = new Bubble(claimed);
+  a.render(1, 'executing', snap(''));
+  a.render(1, 'executing', NBA); // streaming, no done line yet
+  // Run 1 completes carrying its own explanation line.
+  const aDone = snap('Knicks win the title', ['nbcnews.com'], ['Tako: NBA Finals 2026'], 'Added NBA section.');
+  const frozen = a.render(1, 'complete', aDone, true, /* surfaceDone */ true);
+  expect(frozen?.done).toBe('Added NBA section.');
+
+  // A later run advances the surface with a DIFFERENT explanation line; bubble A must
+  // keep its own — re-rendering A against run 2's surface shows the frozen NBA line.
+  const stillFrozen = a.render(2, 'complete', snap('x', [], [], 'Replaced section.'), true, true);
+  expect(stillFrozen?.done).toBe('Added NBA section.');
+});
+
 test('supersede: a cancelled run freezes its own data, not the newer run’s', () => {
   const claimed = new Set([0]);
   const a = new Bubble(claimed);
@@ -118,7 +135,7 @@ test('bubble that never reaches executing stays title-only (degrades, never wron
   expect(b.render(1, 'inProgress', NBA)).toBeNull();
   // Never owned the surface → freezes empty: no answer/sources/log (title-only), and
   // crucially never the NBA content it was shown.
-  expect(b.render(1, 'complete', NBA, true)).toEqual({ lines: [], sources: [], answer: '' });
+  expect(b.render(1, 'complete', NBA, true)).toEqual({ lines: [], sources: [], answer: '', done: '' });
 });
 
 test('idempotent: re-applying the same input does not change state or display', () => {
