@@ -9,8 +9,14 @@
   --paper: #f4efe2;
   --ink: #14110d;
   --accent: #c0341d; /* printer's vermilion */
-  --copydesk-w: 30rem; /* Copy Desk panel width; the press floor reserves this when open */
+  --copydesk-w: 29rem; /* Copy Desk panel width; the press floor reserves this when open */
+  --copydesk-gap: 1.5rem; /* breathing room between the desk card and the viewport edges */
   --copydesk-ease: cubic-bezier(0.22, 1, 0.36, 1); /* shared with the desk's slide-in */
+  /* Direction-specific spring for the desk: a soft overshoot as it settles open,
+     and a little anticipation wind-up before it leaves on close. Transitions take
+     their easing from the END state's rule, so open vs close can differ. */
+  --desk-ease-open: cubic-bezier(0.34, 1.56, 0.64, 1);
+  --desk-ease-close: cubic-bezier(0.36, 0, 0.66, -0.42);
   /* Your background art (public/background.jpg). Falls back to the placeholder
      SVG, then a wood gradient, if the file is ever missing. */
   --desk-image: url('/background.jpg');
@@ -75,40 +81,158 @@ body {
   );
 }
 
-/* Skeleton shimmer for pages still being typeset during the build. */
-@keyframes shimmer { 0%, 100% { opacity: 0.45; } 50% { opacity: 0.85; } }
-.shimmer-bars > * { animation: shimmer 1.3s ease-in-out infinite; }
-
-/* "Press sweep": an ink roller passing over the type being set. A diagonal sheen
-   travels across the skeleton/planning sheet — reads as printing, not as broken. */
-@keyframes press-sweep {
-  0% { transform: translateX(-130%) skewX(-12deg); }
-  100% { transform: translateX(130%) skewX(-12deg); }
+/* ======================================================================
+   TURN-THE-PAGE CORNERS — the spread's only forward/back control.
+   A folded "dog-ear" rests in each bottom corner as a standing hint that the
+   corner lifts; on hover/focus it peels up larger and casts a shadow, and a
+   small label slips in. Bottom-right turns forward, bottom-left turns back.
+   These live OUTSIDE the spread's CSS zoom, so they stay a constant, tappable
+   size at any zoom level and pin to the real paper corners.
+   ====================================================================== */
+.page-corner {
+  position: absolute;
+  bottom: 0;
+  width: 62px;
+  height: 62px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+  z-index: 8;
+  transition: width 0.3s var(--copydesk-ease), height 0.3s var(--copydesk-ease);
 }
-.press-sweep::after {
+.page-corner--next { right: 0; }
+.page-corner--prev { left: 0; }
+.page-corner:hover,
+.page-corner:focus-visible {
+  width: 118px;
+  height: 118px;
+  outline: none;
+}
+
+/* The fold itself: a triangular peeled corner, lighter at the lifted tip and
+   warming into the page's underside toward the fold line, lifted off the page
+   by a soft drop shadow. A slow idle pulse keeps it alive so it reads as "lift me",
+   and a sharp ink fold-line (the ::after) makes the dog-ear unmistakable. */
+.page-corner__fold {
+  position: absolute;
+  inset: 0;
+  transition: filter 0.3s ease;
+  animation: corner-breathe 2.8s ease-in-out infinite;
+}
+.page-corner__fold::after {
   content: '';
   position: absolute;
   inset: 0;
-  pointer-events: none;
-  background: linear-gradient(
-    100deg,
-    transparent 30%,
-    rgba(192, 52, 29, 0.06) 45%,
-    rgba(0, 0, 0, 0.10) 50%,
-    rgba(192, 52, 29, 0.06) 55%,
-    transparent 70%
-  );
-  animation: press-sweep 1.8s ease-in-out infinite;
+}
+.page-corner--next .page-corner__fold {
+  clip-path: polygon(100% 0, 100% 100%, 0 100%);
+  background: linear-gradient(225deg, #fdf9ef 0%, #ece1c8 46%, #c2b48d 100%);
+  filter: drop-shadow(-4px -4px 5px rgba(20, 17, 13, 0.4));
+  transform-origin: 100% 100%;
+}
+.page-corner--next .page-corner__fold::after {
+  /* the diagonal crease line of the fold */
+  background: linear-gradient(225deg, transparent calc(100% - 1.5px), rgba(20, 17, 13, 0.5) calc(100% - 1.5px));
+  clip-path: polygon(100% 0, 100% 100%, 0 100%);
+}
+.page-corner--prev .page-corner__fold {
+  clip-path: polygon(0 0, 100% 100%, 0 100%);
+  background: linear-gradient(135deg, #fdf9ef 0%, #ece1c8 46%, #c2b48d 100%);
+  filter: drop-shadow(4px -4px 5px rgba(20, 17, 13, 0.4));
+  transform-origin: 0% 100%;
+}
+.page-corner--prev .page-corner__fold::after {
+  background: linear-gradient(135deg, transparent calc(100% - 1.5px), rgba(20, 17, 13, 0.5) calc(100% - 1.5px));
+  clip-path: polygon(0 0, 100% 100%, 0 100%);
+}
+.page-corner:hover .page-corner__fold,
+.page-corner:focus-visible .page-corner__fold {
+  animation: none;
+  filter: drop-shadow(-6px -6px 9px rgba(20, 17, 13, 0.48));
+}
+.page-corner--prev:hover .page-corner__fold,
+.page-corner--prev:focus-visible .page-corner__fold {
+  filter: drop-shadow(6px -6px 9px rgba(20, 17, 13, 0.48));
 }
 
-/* Progress track + indeterminate "barber pole" fill for the press console. */
-.press-track { background: rgba(20, 17, 13, 0.12); }
+/* A persistent chevron sitting in the lifted corner — always visible so it's
+   obvious the corner is a control, not decoration. */
+.page-corner__arrow {
+  position: absolute;
+  bottom: 4px;
+  font-family: var(--font-body);
+  font-size: 22px;
+  line-height: 1;
+  font-weight: 700;
+  color: var(--ink);
+  opacity: 0.78;
+  pointer-events: none;
+  transition: opacity 0.2s ease, transform 0.2s ease;
+}
+.page-corner--next .page-corner__arrow { right: 7px; }
+.page-corner--prev .page-corner__arrow { left: 7px; }
+.page-corner:hover .page-corner__arrow,
+.page-corner:focus-visible .page-corner__arrow { opacity: 1; }
+.page-corner--next:hover .page-corner__arrow { transform: translateX(2px); }
+.page-corner--prev:hover .page-corner__arrow { transform: translateX(-2px); }
+
+/* The word, revealed on hover above the chevron, in typewriter caps. */
+.page-corner__hint {
+  position: absolute;
+  bottom: 26px;
+  font-family: var(--font-mono-news);
+  text-transform: uppercase;
+  letter-spacing: 0.16em;
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--ink);
+  white-space: nowrap;
+  opacity: 0;
+  transition: opacity 0.22s ease;
+  pointer-events: none;
+}
+.page-corner--next .page-corner__hint { right: 8px; }
+.page-corner--prev .page-corner__hint { left: 8px; }
+.page-corner:hover .page-corner__hint,
+.page-corner:focus-visible .page-corner__hint { opacity: 0.92; }
+
+@keyframes corner-breathe {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.09); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .page-corner { transition: none; }
+  .page-corner__fold { animation: none; }
+}
+
+/* Type being set: the skeleton bars settle line by line in a calm ink pulse — no
+   color, no sweeping flash, just the quiet sense of type dropping into the stick. */
+@keyframes type-settle { 0%, 100% { opacity: 0.4; } 50% { opacity: 0.78; } }
+.type-setting > * {
+  animation: type-settle 1.6s ease-in-out infinite;
+}
+.type-setting > *:nth-child(2) { animation-delay: 0.1s; }
+.type-setting > *:nth-child(3) { animation-delay: 0.2s; }
+.type-setting > *:nth-child(n + 4) { animation-delay: 0.3s; }
+
+/* The typewriter's blinking carriage cursor (ink, no red). */
+.tw-caret {
+  display: inline-block;
+  margin-left: 1px;
+  animation: blink 1.05s steps(1) infinite;
+}
+
+/* Progress track + indeterminate "barber pole" fill for the press console — ink,
+   no vermilion, so the build reads calm rather than alarming. */
+.press-track { background: rgba(20, 17, 13, 0.1); }
 @keyframes press-barber { 0% { background-position: 0 0; } 100% { background-position: 28px 0; } }
 .press-barber {
   background-image: repeating-linear-gradient(
     -45deg,
-    var(--accent) 0, var(--accent) 7px,
-    rgba(192, 52, 29, 0.4) 7px, rgba(192, 52, 29, 0.4) 14px
+    rgba(20, 17, 13, 0.55) 0, rgba(20, 17, 13, 0.55) 7px,
+    rgba(20, 17, 13, 0.22) 7px, rgba(20, 17, 13, 0.22) 14px
   );
   background-size: 28px 28px;
   animation: press-barber 0.7s linear infinite;
@@ -196,27 +320,59 @@ cpk-web-inspector { display: none !important; }
 }
 
 /* The panel itself: a column of newsroom stationery. A cream sheet with faint
-   paper grain, edged by a thick ink rule and a hairline of vermilion — the way a
-   broadsheet column is ruled off — and pressed onto the desk with a soft shadow. */
+   paper grain, edged all around by a thick ink rule with a hairline of vermilion
+   down its binding edge — the way a broadsheet column is ruled off — pressed onto
+   the desk with a soft drop shadow.
+
+   On phones the base CopilotKit styles keep it a full-screen overlay; the
+   freestanding-card geometry below is scoped to ≥640px. There it stops being a
+   floor-to-ceiling drawer welded to the viewport edge and becomes its own box:
+   inset from the top, bottom and right, vertically centred so it sits beside the
+   newspaper at roughly the spread's height, with all four corners rounded. */
 .copilotKitSidebar .copilotKitWindow {
-  width: var(--copydesk-w);
   background-color: var(--paper);
   background-image:
     radial-gradient(rgba(0, 0, 0, 0.03) 1px, transparent 1px),
     radial-gradient(rgba(0, 0, 0, 0.022) 1px, transparent 1px);
   background-size: 3px 3px, 4px 4px;
   background-position: 0 0, 1px 2px;
-  border-left: 3px solid var(--ink);
-  box-shadow:
-    inset 5px 0 0 -4px var(--accent),  /* vermilion column rule just inside the ink edge */
-    -22px 0 60px rgba(0, 0, 0, 0.46);
-  /* Smooth, symmetric slide for BOTH open and close — same 0.55s easing as the
-     press floor's padding shift, so the paper and the desk move as one piece in
-     either direction. (Overrides CopilotKit's snappier 200ms default.) */
-  transition: transform 0.55s var(--copydesk-ease), opacity 0.4s ease;
 }
 @media (min-width: 640px) {
-  .copilotKitSidebar .copilotKitWindow { width: var(--copydesk-w); }
+  .copilotKitSidebar .copilotKitWindow {
+    /* A discrete card docked a clean gap in from the SCREEN's right edge. The press
+       floor reserves this width on the right, so the spread sits to its left with a
+       desk-background gutter between them. Anchoring to the viewport edge (NOT the
+       live-measured paper edge) keeps it rock-stable at every width: a reflow-lagged
+       --news-right can no longer fling it off-screen (clipped) or strand it mid-page. */
+    width: var(--copydesk-w);
+    right: var(--copydesk-gap);
+    left: auto;
+    top: calc(var(--news-top, 50vh) + var(--news-h, 0px) / 2);
+    bottom: auto;
+    /* A calm, chat-sized card — deliberately SHORTER than the paper's full height, so
+       it reads as a freestanding note on the right rather than a wall down the side.
+       Centred via the top/translateY pair, leaving a clean even margin top and bottom. */
+    height: clamp(360px, 54vh, 500px);
+    min-height: 0;
+    margin: 0;
+    overflow: hidden; /* clip header/input to the rounded corners */
+    border: 2.5px solid var(--ink);
+    border-radius: 12px;
+    box-shadow:
+      0 26px 70px rgba(0, 0, 0, 0.5),
+      0 4px 14px rgba(0, 0, 0, 0.3);
+    /* Closed: slid fully past the right edge. translateX(100%) is the card's OWN width,
+       so +a gutter always clears the viewport at ANY width — no measurement involved. */
+    transform: translateY(-50%) translateX(calc(100% + var(--copydesk-gap) + 8px));
+    transition: top 0.3s ease,
+      transform 0.6s var(--desk-ease-close), opacity 0.45s ease;
+  }
+  .copilotKitSidebar .copilotKitWindow.open {
+    transform: translateY(-50%) translateX(0);
+    /* Opening settles with a soft wobble (overshoot) for a livelier feel. */
+    transition: top 0.3s ease,
+      transform 0.72s var(--desk-ease-open), opacity 0.3s ease;
+  }
 }
 @media (prefers-reduced-motion: reduce) {
   .copilotKitSidebar .copilotKitWindow { transition: none; }
@@ -230,19 +386,36 @@ cpk-web-inspector { display: none !important; }
    ResizeObserver re-fits the zoom as the floor narrows, so the full spread stays
    visible. Below 640px the desk is a full-screen overlay, so we don't shift. */
 .press-floor {
-  transition: padding-right 0.55s var(--copydesk-ease);
-  will-change: padding-right;
+  /* The Copy Desk reserves a fixed total of horizontal space. That TOTAL is held
+     constant across loading and reading (loading splits it 50/50; reveal shifts it all
+     to the right), so the spread always fits to the same width — its SIZE never
+     changes, only its horizontal position (centred while printing, left on reveal). */
+  transition: padding-left 0.55s var(--copydesk-ease), padding-right 0.55s var(--copydesk-ease);
+  will-change: padding-left, padding-right;
 }
 @media (min-width: 640px) {
-  .press-floor[data-desk-open='true'] { padding-right: var(--copydesk-w); }
+  /* LOADING: half the reserve on EACH side → the spread prints FRONT AND CENTRE, at
+     the same width as the reading layout. Half = copydesk-w/2 + one gap. */
+  .press-floor[data-floor-state='loading'] {
+    padding-left: calc(var(--copydesk-w) / 2 + var(--copydesk-gap));
+    padding-right: calc(var(--copydesk-w) / 2 + var(--copydesk-gap));
+  }
+  /* REVEAL (desk open): the WHOLE reserve on the right (copydesk-w + 2 gaps), zero on
+     the left. Same total as the loading split, so the spread keeps its exact size and
+     just slides left as the desk glides into the freed gutter. */
+  .press-floor[data-floor-state='desk-open'] {
+    padding-left: 0;
+    padding-right: calc(var(--copydesk-w) + 2 * var(--copydesk-gap));
+  }
+  /* 'full' (desk closed) and 'idle' reserve nothing — the spread fills the floor. */
 }
 @media (prefers-reduced-motion: reduce) {
   .press-floor { transition: none; }
 }
 
-/* Masthead: a black ink bar topped with a vermilion rule and a hairline below it
-   (a printed double rule), set in restrained typewriter caps — a nameplate, not a
-   button bar. Slightly taller so the title has room to breathe. */
+/* Masthead: a black ink bar with a single soft paper hairline below it, set in
+   restrained typewriter caps — a nameplate, not a button bar. Matches the paper/ink
+   theme; no vermilion rules. Slightly taller so the title has room to breathe. */
 .copilotKitSidebar .copilotKitHeader {
   height: 60px;
   background-color: var(--ink);
@@ -252,9 +425,8 @@ cpk-web-inspector { display: none !important; }
   letter-spacing: 0.26em;
   font-size: 12.5px;
   font-weight: 600;
-  border-top: 3px solid var(--accent);
-  border-bottom: 1px solid var(--accent);
-  box-shadow: inset 0 -4px 0 -3px rgba(244, 239, 226, 0.35);
+  border-bottom: 1px solid rgba(244, 239, 226, 0.18);
+  box-shadow: inset 0 -4px 0 -3px rgba(244, 239, 226, 0.3);
 }
 .copilotKitSidebar .copilotKitHeader > button {
   color: rgba(244, 239, 226, 0.65);
@@ -301,14 +473,14 @@ cpk-web-inspector { display: none !important; }
 .copilotKitSidebar .copilotKitAssistantMessage p { margin: 0 0 0.7em; }
 .copilotKitSidebar .copilotKitAssistantMessage p:last-child { margin-bottom: 0; }
 
-/* Reader = a margin note in editor's pencil: vermilion serif italic on cream,
-   ruled off by a red bar on the left. Reads like a quick aside scrawled beside the
-   column — softer and far more legible than a blocky typewriter chip. */
+/* Reader = a margin note penciled beside the column: warm serif italic in ink on
+   cream, ruled off by an ink bar on the left. Mirrors the paper/ink theme — no red —
+   yet still reads as a quick aside distinct from the copy desk's replies. */
 .copilotKitSidebar .copilotKitMessage.copilotKitUserMessage {
   background: linear-gradient(180deg, #f6f1e4, #f1ead9);
-  color: var(--accent);
-  border: 1px solid rgba(192, 52, 29, 0.35);
-  border-left: 3px solid var(--accent);
+  color: var(--ink);
+  border: 1px solid rgba(20, 17, 13, 0.22);
+  border-left: 3px solid rgba(20, 17, 13, 0.7);
   border-radius: 2px 5px 5px 2px;
   box-shadow: 1px 2px 5px rgba(20, 17, 13, 0.12);
   font-family: var(--font-body);
@@ -323,8 +495,7 @@ cpk-web-inspector { display: none !important; }
   content: '✎ ';
   font-style: normal;
   font-weight: 700;
-  color: var(--accent);
-  opacity: 0.85;
+  color: rgba(20, 17, 13, 0.6);
 }
 
 /* Suggestion chips below the greeting: little wire slips — cream, ink-ruled,
@@ -382,18 +553,95 @@ cpk-web-inspector { display: none !important; }
 }
 .copilotKitSidebar .copilotKitInputControlButton:not([disabled]) { color: var(--accent); }
 
-/* Launcher / reopen control: a vermilion ink-stamp button. */
-.copilotKitSidebar .copilotKitButton {
-  background-color: var(--accent);
-  border: 2px solid var(--ink);
-  border-radius: 10px;
-  color: var(--paper);
-  box-shadow: 4px 5px 0 rgba(0, 0, 0, 0.35);
-  transition: transform 0.22s var(--copydesk-ease), box-shadow 0.22s ease;
+/* Hide CopilotKit's default round launcher; we render our own right-rail handle
+   (DeskHandle) in its place, so nothing floats in the bottom-right corner. */
+.copilotKitSidebar .copilotKitButton { display: none; }
+
+/* THE DESK HANDLE — the open/close control as a tab on the NEWSPAPER's right edge.
+   It anchors to --news-right (the spread's measured right edge), so the "open the
+   Copy Desk" affordance lives on the paper, not at the screen edge. Closed: it sits
+   in the gutter just off the paper, chevron pointing right ("expand →"). Open: it
+   docks against the desk card's left edge, chevron pointing left ("collapse"). It
+   slides on the same easing as the card + press floor, so all three move together.
+   Below 640px the desk is a full-screen overlay, so the tab is hidden. */
+.copilotKitSidebar .copydesk-handle {
+  display: none;
 }
-.copilotKitSidebar .copilotKitButton:hover {
-  transform: translateY(-2px) scale(1.04);
-  box-shadow: 5px 7px 0 rgba(0, 0, 0, 0.38);
+@media (min-width: 640px) {
+  .copilotKitSidebar .copydesk-handle {
+    position: fixed;
+    /* Anchored to the SCREEN's right edge, same as the card — so when closed the tab
+       is always a clean pull-tab on the right rail, never stranded mid-page by a
+       paper edge that (on wide screens) sits well inside the viewport. */
+    right: 0;
+    left: auto;
+    top: calc(var(--news-top, 50vh) + var(--news-h, 0px) / 2);
+    transform: translateY(-50%);
+    z-index: 40; /* above the press floor + paper */
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    width: 34px;
+    padding: 18px 0 20px;
+    background-color: var(--ink);
+    color: var(--paper);
+    border: none;
+    border-radius: 10px 0 0 10px; /* rounded on the inner (left) face, against the edge */
+    box-shadow: -6px 6px 18px rgba(0, 0, 0, 0.4);
+    cursor: pointer;
+    /* Both states anchor by `right`, so the tab slides cleanly between the screen edge
+       (closed) and the card's inner edge (open) with no measurement in the loop. */
+    transition:
+      right 0.6s var(--desk-ease-close),
+      top 0.3s ease,
+      background-color 0.2s ease,
+      width 0.2s ease;
+  }
+  /* When open, dock the handle against the card's inner (left) edge — the card sits a
+     gap in from the screen edge and is one card-width wide, so the tab's right edge
+     lands exactly on the card's left edge. They slide as one piece. */
+  .copilotKitSidebar .copydesk-handle.is-open {
+    right: calc(var(--copydesk-gap) + var(--copydesk-w));
+    left: auto;
+    transition:
+      right 0.72s var(--desk-ease-open),
+      top 0.3s ease,
+      background-color 0.2s ease,
+      width 0.2s ease;
+  }
+  .copilotKitSidebar .copydesk-handle:hover {
+    width: 38px;
+    background-color: #211c15;
+  }
+  .copilotKitSidebar .copydesk-handle:focus-visible {
+    outline: 2px solid var(--paper);
+    outline-offset: 2px;
+  }
+  .copilotKitSidebar .copydesk-handle-chevron {
+    font-family: var(--font-body);
+    font-size: 20px;
+    line-height: 1;
+    color: var(--paper);
+    transition: transform 0.2s ease;
+  }
+  .copilotKitSidebar .copydesk-handle:hover .copydesk-handle-chevron {
+    color: #ffffff;
+  }
+  /* Vertical "COPY DESK" running up the tab — reads as an editorial spine label. */
+  .copilotKitSidebar .copydesk-handle-label {
+    writing-mode: vertical-rl;
+    transform: rotate(180deg);
+    font-family: var(--font-mono-news);
+    text-transform: uppercase;
+    letter-spacing: 0.22em;
+    font-size: 9.5px;
+    color: rgba(244, 239, 226, 0.7);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .copilotKitSidebar .copydesk-handle { transition: none; }
 }
 
 /* Tone the "powered by" footer down to a faint printer's mark. */

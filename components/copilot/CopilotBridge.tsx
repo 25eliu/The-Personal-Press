@@ -1,9 +1,37 @@
 'use client';
 import type { Dispatch, RefObject } from 'react';
-import { CopilotSidebar } from '@copilotkit/react-ui';
+import { CopilotSidebar, useChatContext } from '@copilotkit/react-ui';
 import { useEditionCopilot } from '@/lib/edition/useEditionCopilot';
 import { HOUSE_STYLE } from '@/lib/edition/instructions';
 import type { EditionAction, EditionState } from '@/lib/edition/state';
+
+/**
+ * The open/close control. Replaces CopilotKit's round launcher (which floats in the
+ * bottom-right corner and overlaps the panel) with an industry-standard right-rail
+ * handle: a vertical ink tab pinned to the viewport's right edge. Its chevron points
+ * left to pull the desk open; once open the tab rides to the panel's outer edge and
+ * the chevron flips right to push it closed. It slides on the same easing as the
+ * panel, so handle and card move as one piece.
+ */
+function DeskHandle() {
+  const { open, setOpen } = useChatContext();
+  return (
+    <button
+      type="button"
+      onClick={() => setOpen(!open)}
+      className={`copydesk-handle ${open ? 'is-open' : ''}`}
+      aria-label={open ? 'Close the Copy Desk' : 'Open the Copy Desk'}
+      aria-expanded={open}
+    >
+      <span className="copydesk-handle-chevron" aria-hidden>
+        {open ? '‹' : '›'}
+      </span>
+      <span className="copydesk-handle-label" aria-hidden>
+        Copy Desk
+      </span>
+    </button>
+  );
+}
 
 /**
  * Bridges the newspaper's reducer state to CopilotKit. Rendered INSIDE <CopilotKit>
@@ -33,6 +61,7 @@ export function CopilotBridge({
       instructions={HOUSE_STYLE}
       defaultOpen
       clickOutsideToClose={false}
+      Button={DeskHandle}
       onSetOpen={onOpenChange}
       labels={{
         title: 'The Copy Desk',

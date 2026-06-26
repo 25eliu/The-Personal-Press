@@ -36,7 +36,6 @@ export function BuildStatus({
   const copy = STAGE_COPY[stage];
   const indeterminate = stage === 'planning' || total === 0;
   const pct = stage === 'printing' ? 1 : total > 0 ? done / total : 0;
-  const isAccent = stage !== 'typesetting';
 
   return (
     <motion.div
@@ -47,12 +46,8 @@ export function BuildStatus({
     >
       <div className="flex items-center gap-3">
         {/* Stage badge */}
-        <span
-          className={`shrink-0 rounded-sm px-2 py-1 text-[10px] font-bold uppercase tracking-[0.18em] ${
-            isAccent ? 'bg-[var(--accent)] text-[var(--paper)]' : 'bg-[var(--ink)] text-[var(--paper)]'
-          }`}
-        >
-          <span className="live-dot mr-1">●</span>
+        <span className="shrink-0 rounded-sm bg-[var(--ink)] px-2 py-1 text-[10px] font-bold uppercase tracking-[0.18em] text-[var(--paper)]">
+          <span className="live-dot mr-1 text-[var(--paper)]/80">●</span>
           {copy.chip}
         </span>
 
@@ -83,7 +78,7 @@ export function BuildStatus({
               <div className="press-barber h-full w-full" />
             ) : (
               <motion.div
-                className="h-full rounded-full bg-[var(--accent)]"
+                className="h-full rounded-full bg-[var(--ink)]"
                 initial={{ width: 0 }}
                 animate={{ width: `${Math.max(4, pct * 100)}%` }}
                 transition={{ type: 'spring', stiffness: 120, damping: 20 }}

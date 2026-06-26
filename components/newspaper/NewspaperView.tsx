@@ -5,54 +5,67 @@ import type { TPage } from '@/lib/schema';
 import type { SectionPlanItem } from '@/lib/stream/events';
 import { NewspaperPage } from './NewspaperPage';
 import { PaginatedReader } from './PaginatedReader';
+import { Typewriter } from '@/components/build/Typewriter';
 
 const PAGE_W = 600; // fixed page width; the whole spread is fit-scaled to the viewport
 
 type Meta = { masthead: string; tagline: string; edition: string; dateLine: string };
 
+// Newsroom status lines the press types out while a page is being set.
+const SETTING_LINES = [
+  'Reporters filing copy…',
+  'Checking the wire for fresh numbers…',
+  'Setting the headline in the stick…',
+  'Locking the chase, page by page…',
+  'Reading proofs against the source…',
+  'Inking the rollers…',
+];
+
+// Lines for the very first wait, before the editor has returned a section plan.
+const PLANNING_LINES = [
+  'Reading your brief…',
+  'Assigning reporters to the desks…',
+  'Drawing up today’s section plan…',
+  'Booking space on the front page…',
+  'Warming up the composing room…',
+];
+
 function SkeletonPage({ topic }: { topic: string }) {
   return (
-    <div className="paper press-sweep relative flex w-full flex-col gap-2 overflow-hidden px-6 py-6" style={{ minHeight: 560 }}>
-      <div className="shimmer-bars flex flex-col gap-2">
-        <div className="h-7 w-3/4 bg-black/80" />
-        <div className="h-3 w-1/3 bg-black/40" />
-        <div className="mt-2 h-32 w-full border border-black/50 bg-black/5" />
+    <div className="paper relative flex w-full flex-col gap-2 overflow-hidden px-6 py-6" style={{ minHeight: 560 }}>
+      <div className="type-setting flex flex-col gap-2">
+        <div className="h-7 w-3/4 bg-black/70" />
+        <div className="h-3 w-1/3 bg-black/30" />
+        <div className="mt-2 h-32 w-full border border-black/40 bg-black/[0.04]" />
         {Array.from({ length: 12 }).map((_, i) => (
-          <div key={i} className="h-2.5 bg-black/15" style={{ width: `${100 - (i % 4) * 8}%` }} />
+          <div key={i} className="h-2.5 bg-black/10" style={{ width: `${100 - (i % 4) * 8}%` }} />
         ))}
       </div>
-      <p className="font-mono-news mt-auto flex items-center justify-center gap-2 pt-2 text-center text-[10px] uppercase tracking-widest text-black/55">
-        <span className="live-dot text-[var(--accent)]">●</span> Reporting &amp; setting type — {topic}
+      <p className="mt-auto pt-3 text-center">
+        <Typewriter
+          messages={SETTING_LINES}
+          className="text-[11px] uppercase tracking-[0.16em] text-[var(--ink)]/65"
+        />
+        <span className="font-mono-news mt-1 block text-[10px] uppercase tracking-[0.2em] text-[var(--ink)]/35">
+          {topic}
+        </span>
       </p>
     </div>
   );
 }
 
-/** Shown before the editor has planned the sections — makes the "planning" wait legible. */
+/** Shown before the editor has planned the sections — a calm composing-room terminal. */
 function PlanningSheet() {
   return (
-    <div className="paper press-sweep relative flex w-full flex-col items-center justify-center gap-4 overflow-hidden px-8 py-16 text-center" style={{ minHeight: 560 }}>
-      <motion.div
-        animate={{ rotate: [0, -8, 8, 0] }}
-        transition={{ duration: 2.4, repeat: Infinity, ease: 'easeInOut' }}
-        className="text-5xl"
-      >
-        🐙
-      </motion.div>
-      <h2 className="font-masthead text-3xl text-[var(--ink)]">Planning today’s edition</h2>
-      <p className="font-mono-news max-w-sm text-[12px] uppercase tracking-[0.18em] text-[var(--ink)]/55">
-        The editor is reading your brief and assigning reporters to the day’s sections…
-      </p>
-      <div className="mt-2 flex gap-1.5">
-        {[0, 1, 2].map((i) => (
-          <motion.span
-            key={i}
-            className="h-2 w-2 rounded-full bg-[var(--accent)]"
-            animate={{ opacity: [0.25, 1, 0.25] }}
-            transition={{ duration: 1.1, repeat: Infinity, delay: i * 0.18 }}
-          />
-        ))}
-      </div>
+    <div className="paper relative flex w-full flex-col items-center justify-center gap-6 overflow-hidden px-8 py-16 text-center" style={{ minHeight: 560 }}>
+      <span className="font-mono-news text-[10px] uppercase tracking-[0.34em] text-[var(--ink)]/40">
+        The Personal Press · Composing Room
+      </span>
+      <Typewriter
+        messages={PLANNING_LINES}
+        className="block min-h-[1.6em] text-[16px] tracking-[0.04em] text-[var(--ink)]"
+      />
+      <div className="h-px w-44 bg-[var(--ink)]/15" />
     </div>
   );
 }
@@ -90,7 +103,6 @@ export function NewspaperView({ plan, pages, meta, building, bw }: {
   const topicFor = (i: number) => pages[i]?.topic ?? plan[i]?.topic ?? `Page ${i + 1}`;
 
   const [spread, setSpread] = useState(0);
-  const [mult, setMult] = useState(1);
   const [cw, setCw] = useState(1000);
   const [lightbox, setLightbox] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -121,10 +133,9 @@ export function NewspaperView({ plan, pages, meta, building, bw }: {
 
   const portrait = cw < 720;
   const spreadW = (portrait ? PAGE_W : PAGE_W * 2) + 40;
-  // Let the spread scale up toward broadsheet size when there's room (cap 1.5);
-  // the container max-width below is what actually bounds it on wide screens.
-  const fit = Math.min(1.5, (cw - 8) / spreadW);
-  const zoom = Math.max(0.3, fit * mult);
+  // Auto-fit the spread to the available width (cap 1.5). No manual zoom control —
+  // the paper always fits the page.
+  const zoom = Math.max(0.3, Math.min(1.5, (cw - 8) / spreadW));
 
   const jump = (slot: number) => setSpread(Math.floor(slot / 2));
 
@@ -174,20 +185,15 @@ export function NewspaperView({ plan, pages, meta, building, bw }: {
               >
                 {building && (
                   ready ? (
-                    <span className="text-[var(--accent)]">✓</span>
+                    <span className="text-[var(--ink)]/70">✓</span>
                   ) : (
-                    <span className="live-dot text-[var(--accent)]">●</span>
+                    <span className="live-dot text-[var(--ink)]/45">●</span>
                   )
                 )}
                 {i === 0 ? 'Front' : topicFor(i)}
               </button>
             );
           })}
-        </div>
-        <div className="font-mono-news flex items-center gap-1 text-[11px]">
-          <button onClick={() => setMult((m) => Math.max(0.6, +(m - 0.2).toFixed(2)))} className={`h-6 w-6 rounded-sm border shadow-sm ${pill}`} aria-label="Zoom out">−</button>
-          <button onClick={() => setMult(1)} className={`rounded-sm border px-2 py-0.5 shadow-sm ${pill}`} aria-label="Fit">{Math.round(zoom * 100)}%</button>
-          <button onClick={() => setMult((m) => Math.min(3, +(m + 0.2).toFixed(2)))} className={`h-6 w-6 rounded-sm border shadow-sm ${pill}`} aria-label="Zoom in">+</button>
         </div>
       </div>
 
