@@ -1,4 +1,7 @@
 @import 'tailwindcss';
+/* CopilotKit default styles for the Copy Desk sidebar. Imported AFTER Tailwind so
+   the sidebar's own cascade wins; the panel is visually isolated from the paper. */
+@import '@copilotkit/react-ui/styles.css';
 
 :root {
   --font-body: Georgia, 'Old Standard TT', 'Times New Roman', serif;
@@ -126,4 +129,151 @@ body {
   mix-blend-mode: multiply;
   opacity: 0.18;
   pointer-events: none;
+}
+
+/* ======================================================================
+   THE COPY DESK — newspaper-native skin for the CopilotKit sidebar.
+   The default CopilotKit chat looks like a generic SaaS widget; these
+   overrides re-dress it as a piece of newsroom stationery: an ink-bar
+   memo header, ruled-pad paper body, carbon-copy serif replies, and
+   red editor's-pencil notes. Loaded AFTER the imported CopilotKit CSS
+   (top of this file) so this cascade wins. Scoped to .copilotKitSidebar
+   so nothing leaks onto the paper itself.
+   ====================================================================== */
+
+/* CopilotKit injects a dev-only web-inspector custom element that floats a vendor
+   promo banner over our header. We don't use it — hide it so the masthead stays clean. */
+cpk-web-inspector { display: none !important; }
+
+/* Palette the CopilotKit primitives draw from. */
+.copilotKitSidebar {
+  --copilot-kit-primary-color: var(--ink);
+  --copilot-kit-contrast-color: var(--paper);
+  --copilot-kit-background-color: var(--paper);
+  --copilot-kit-input-background-color: #ece3d0;
+  --copilot-kit-secondary-color: var(--paper);
+  --copilot-kit-secondary-contrast-color: var(--ink);
+  --copilot-kit-separator-color: rgba(20, 17, 13, 0.28);
+  --copilot-kit-muted-color: rgba(20, 17, 13, 0.45);
+  font-family: var(--font-body);
+}
+
+/* The panel itself: a cream paper slip with a torn ink edge, pressed
+   onto the desk with a deep drop shadow. */
+.copilotKitSidebar .copilotKitWindow {
+  width: 27rem;
+  background-color: var(--paper);
+  background-image:
+    radial-gradient(rgba(0, 0, 0, 0.035) 1px, transparent 1px),
+    radial-gradient(rgba(0, 0, 0, 0.025) 1px, transparent 1px);
+  background-size: 3px 3px, 4px 4px;
+  background-position: 0 0, 1px 2px;
+  border-left: 3px solid var(--ink);
+  box-shadow: -18px 0 52px rgba(0, 0, 0, 0.5);
+}
+@media (min-width: 640px) {
+  .copilotKitSidebar .copilotKitWindow { width: 27rem; }
+  .copilotKitSidebarContentWrapper.sidebarExpanded { margin-right: 27rem; }
+}
+
+/* Slide-in like a paper slip dealt onto the desk, with a tiny settle. */
+@keyframes copyDeskIn {
+  from { transform: translateX(106%); }
+  62%  { transform: translateX(-1.6%); }
+  to   { transform: translateX(0); }
+}
+.copilotKitSidebar .copilotKitWindow.open {
+  animation: copyDeskIn 0.55s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+/* Masthead: a black ink bar with a vermilion rule, set in typewriter caps. */
+.copilotKitSidebar .copilotKitHeader {
+  background-color: var(--ink);
+  color: var(--paper);
+  font-family: var(--font-mono-news);
+  text-transform: uppercase;
+  letter-spacing: 0.2em;
+  font-size: 13px;
+  font-weight: 700;
+  border-bottom: 2px solid var(--accent);
+}
+.copilotKitSidebar .copilotKitHeader > button { color: rgba(244, 239, 226, 0.7); }
+.copilotKitSidebar .copilotKitHeader > button:hover {
+  color: var(--accent);
+  background-color: transparent;
+}
+
+/* The reading surface: faint ruled-pad lines on cream. */
+.copilotKitSidebar .copilotKitMessages {
+  background-color: var(--paper);
+  background-image: linear-gradient(rgba(20, 17, 13, 0.05) 1px, transparent 1px);
+  background-size: 100% 28px;
+  background-position: 0 16px;
+}
+.copilotKitSidebar .copilotKitMessages::-webkit-scrollbar-thumb {
+  background-color: rgba(20, 17, 13, 0.4);
+  border-radius: 999px;
+  border: 2px solid transparent;
+  background-clip: content-box;
+}
+
+/* Assistant = a typed carbon-copy paragraph (serif, inked). */
+.copilotKitSidebar .copilotKitAssistantMessage {
+  font-family: var(--font-body);
+  color: var(--ink);
+  font-size: 14px;
+  line-height: 1.72;
+}
+
+/* Reader = a red editor's-pencil margin note. */
+.copilotKitSidebar .copilotKitUserMessage {
+  background: var(--paper);
+  color: var(--accent);
+  border: 1px solid rgba(192, 52, 29, 0.5);
+  border-radius: 2px;
+  box-shadow: 2px 2px 0 rgba(20, 17, 13, 0.12);
+  font-family: var(--font-mono-news);
+  font-size: 12.5px;
+  line-height: 1.6;
+  padding: 8px 11px;
+}
+.copilotKitSidebar .copilotKitUserMessage::before {
+  content: '✎ ';
+  font-weight: 700;
+  color: var(--accent);
+}
+
+/* Input: a typewriter slip with a vermilion send-stamp. */
+.copilotKitSidebar .copilotKitInputContainer {
+  background: var(--paper);
+  border-top: 1px solid rgba(20, 17, 13, 0.18);
+}
+.copilotKitSidebar .copilotKitInput {
+  background-color: var(--copilot-kit-input-background-color);
+  border: 1px solid rgba(20, 17, 13, 0.35);
+  border-radius: 3px;
+}
+.copilotKitSidebar .copilotKitInput > textarea {
+  font-family: var(--font-mono-news);
+  color: var(--ink);
+}
+.copilotKitSidebar .copilotKitInput > textarea::placeholder { color: rgba(20, 17, 13, 0.45); }
+.copilotKitSidebar .copilotKitInputControlButton:not([disabled]) { color: var(--accent); }
+
+/* Launcher / reopen control: a vermilion ink-stamp button. */
+.copilotKitSidebar .copilotKitButton {
+  background-color: var(--accent);
+  border: 2px solid var(--ink);
+  border-radius: 10px;
+  color: var(--paper);
+  box-shadow: 4px 5px 0 rgba(0, 0, 0, 0.35);
+}
+.copilotKitSidebar .copilotKitButton:hover { transform: translateY(-2px) scale(1.04); }
+
+/* Tone the "powered by" footer down to a faint printer's mark. */
+.copilotKitSidebar .poweredBy {
+  background: var(--paper) !important;
+  color: rgba(20, 17, 13, 0.3) !important;
+  font-family: var(--font-mono-news) !important;
+  letter-spacing: 0.08em;
 }

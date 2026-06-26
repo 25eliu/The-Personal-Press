@@ -1,18 +1,17 @@
 'use client';
-import { useEffect, useRef, useState } from 'react';
-import { BRAND } from '@/lib/config';
-import type { TPage } from '@/lib/schema';
-import type { GenerateEvent, SectionPlanItem } from '@/lib/stream/events';
+import { useEffect, useReducer, useRef, useState } from 'react';
+import type { GenerateEvent } from '@/lib/stream/events';
 import { streamGenerate } from '@/lib/stream/client';
+import { editionReducer, initialEditionState } from '@/lib/edition/state';
 import { playDemo } from '@/lib/demo/sample';
 import { BriefInput } from '@/components/BriefInput';
 import { BWToggle } from '@/components/BWToggle';
 import { WireTicker, type ActivityItem } from '@/components/build/WireTicker';
 import { NewspaperView } from '@/components/newspaper/NewspaperView';
+import { CopilotKit } from '@copilotkit/react-core';
+import { CopilotBridge } from '@/components/copilot/CopilotBridge';
 
 type Phase = 'idle' | 'typesetting' | 'printing' | 'reading';
-type Meta = { masthead: string; tagline: string; edition: string; dateLine: string };
-const EMPTY_META: Meta = { masthead: BRAND, tagline: '', edition: '', dateLine: '' };
 
 // Sarcastic newsroom quips mixed into the wire while the agents work.
 const QUIPS = [
@@ -32,11 +31,11 @@ const QUIPS = [
 
 export function DailyTako() {
   const [phase, setPhase] = useState<Phase>('idle');
-  const [bw, setBw] = useState(true);
+  // Color is the default house style; readers opt into the timeless no-color mode.
+  const [bw, setBw] = useState(false);
   const [brief, setBrief] = useState('');
-  const [meta, setMeta] = useState<Meta>(EMPTY_META);
-  const [plan, setPlan] = useState<SectionPlanItem[]>([]);
-  const [pages, setPages] = useState<(TPage | null)[]>([]);
+  const [edition, dispatch] = useReducer(editionReducer, initialEditionState);
+  const { meta, plan, pages } = edition;
   const [activity, setActivity] = useState<ActivityItem[]>([]);
   const [error, setError] = useState<string | null>(null);
   const abortRef = useRef<AbortController | null>(null);
@@ -45,7 +44,7 @@ export function DailyTako() {
   const building = phase === 'typesetting' || phase === 'printing';
 
   useEffect(() => {
-    setBw(localStorage.getItem('tako-bw') !== 'false');
+    setBw(localStorage.getItem('tako-bw') === 'true');
     setBrief(localStorage.getItem('tako-brief') ?? '');
   }, []);
 
@@ -69,21 +68,22 @@ export function DailyTako() {
 
   function onEvent(e: GenerateEvent) {
     if (e.type === 'editor_done') {
-      setMeta({ masthead: e.masthead, tagline: e.tagline, edition: e.edition, dateLine: e.dateLine });
-      setPlan(e.plan);
-      setPages(new Array(e.plan.length).fill(null));
+      dispatch({
+        type: 'SET_FROM_EDITOR',
+        meta: { masthead: e.masthead, tagline: e.tagline, edition: e.edition, dateLine: e.dateLine },
+        plan: e.plan,
+      });
     } else if (e.type === 'tool_activity') {
       setActivity((prev) => [
         ...prev,
         { id: activityId.current++, kind: 'tako', slot: e.slot, topic: e.topic, label: e.label, detail: e.detail },
       ]);
     } else if (e.type === 'section_done') {
-      setPages((prev) => { const next = [...prev]; next[e.slot] = e.page; return next; });
+      dispatch({ type: 'SET_SECTION', slot: e.slot, page: e.page });
     } else if (e.type === 'complete') {
       // Rebuild from the finished paper so dropped "no fresh reporting" sections
       // disappear from the spreads and section nav.
-      setPlan(e.newspaper.pages.map((p, i) => ({ topic: p.topic, slot: i })));
-      setPages(e.newspaper.pages);
+      dispatch({ type: 'COMPLETE', newspaper: e.newspaper });
       setPhase('printing');
       setTimeout(() => setPhase('reading'), 900);
     } else if (e.type === 'error') {
@@ -93,7 +93,8 @@ export function DailyTako() {
 
   function resetForRun() {
     abortRef.current?.abort();
-    setError(null); setPlan([]); setPages([]); setActivity([]); setPhase('typesetting');
+    dispatch({ type: 'RESET' });
+    setError(null); setActivity([]); setPhase('typesetting');
     abortRef.current = new AbortController();
     return abortRef.current.signal;
   }
@@ -152,10 +153,18 @@ export function DailyTako() {
       )}
 
       {phase !== 'idle' && (
-        <>
+        <CopilotKit runtimeUrl="/api/copilotkit" showDevConsole={false}>
           {building && <WireTicker items={activity} />}
           <NewspaperView plan={plan} pages={pages} meta={meta} building={building} bw={bw} />
-        </>
+          {/* Editing only once the paper has finished printing, so edits can't race
+              the generation stream's dispatches into the same reducer. */}
+          <CopilotBridge
+            edition={edition}
+            dispatch={dispatch}
+            abortRef={abortRef}
+            showSidebar={phase === 'reading'}
+          />
+        </CopilotKit>
       )}
     </main>
   );
