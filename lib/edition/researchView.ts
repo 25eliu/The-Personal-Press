@@ -37,6 +37,13 @@ export type ResearchViewInput = {
   live: Snapshot;
   /** This bubble has reached its terminal (status === 'complete'). */
   done: boolean;
+  /**
+   * The surface itself already carries a terminal status line — i.e. it is the
+   * leftover of a finished run, not a fresh one. A bubble must never claim such a
+   * surface: that is the leftover the new bubble would otherwise display before its
+   * own run begins.
+   */
+  surfaceDone: boolean;
   /** Some other bubble already claimed `runId` (or it is the seeded sentinel). */
   alreadyClaimed: boolean;
 };
@@ -58,12 +65,21 @@ export function reduceResearchView(
   input: ResearchViewInput,
 ): { next: ResearchViewState; display: Snapshot | null; claim: boolean } {
   let { claimedRunId, lastOwn, frozen } = s;
-  const { runId, status, live, done, alreadyClaimed } = input;
+  const { runId, status, live, done, surfaceDone, alreadyClaimed } = input;
 
   // Claim only this bubble's OWN run: its handler is executing (so beginResearchRun has
-  // re-tagged the surface), the id is unclaimed, and the surface is not already terminal.
+  // re-tagged the surface to a FRESH run — surfaceDone is false), the id is unclaimed,
+  // and this bubble has not itself completed. The surfaceDone guard is the decisive one:
+  // a leftover surface from a finished run still carries its terminal line, so a new
+  // bubble rendering during the pre-research window can never bind it.
   let claim = false;
-  if (claimedRunId === null && status === 'executing' && !alreadyClaimed && !done) {
+  if (
+    claimedRunId === null &&
+    status === 'executing' &&
+    !surfaceDone &&
+    !alreadyClaimed &&
+    !done
+  ) {
     claimedRunId = runId;
     claim = true;
   }

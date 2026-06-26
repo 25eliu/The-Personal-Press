@@ -32,6 +32,7 @@ export function ResearchProgress({
   done,
   runId,
   status,
+  surfaceDone,
   claimed,
 }: {
   title: string;
@@ -41,6 +42,7 @@ export function ResearchProgress({
   done?: string;
   runId?: number;
   status?: ResearchStatus;
+  surfaceDone?: boolean;
   claimed?: Set<number>;
 }) {
   // Legacy mode (editArticle): no shared surface → freeze the snapshot once on done.
@@ -62,6 +64,7 @@ export function ResearchProgress({
       status,
       live: { lines, sources, answer },
       done: Boolean(done),
+      surfaceDone: Boolean(surfaceDone),
       alreadyClaimed: claimed.has(runId),
     });
     viewRef.current = next;

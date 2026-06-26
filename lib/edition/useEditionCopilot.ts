@@ -105,7 +105,8 @@ export function useEditionCopilot(
 
   const runResearch = async (topic: string, isFront: boolean, context?: string) => {
     const { signal, isCurrent } = beginResearchRun();
-    return streamEditSection(
+    let errored = false;
+    const page = await streamEditSection(
       { topic, isFront, context },
       (e) => {
         if (!isCurrent()) return;   // a superseded run must not touch the shared surface
@@ -116,11 +117,18 @@ export function useEditionCopilot(
         } else if (e.type === 'token') {
           setResearchAnswer((prev) => prev + e.text);    // streams the forming section into the chat bubble
         } else if (e.type === 'error') {
+          errored = true;
           setResearchDone(`⚠ ${e.message}`);
         }
       },
       signal,
     );
+    // Always stamp a terminal line once the stream ends (unless an error already did),
+    // so a leftover surface is never left un-done — that is what lets the next bubble's
+    // surfaceDone guard refuse to bind it. The handler overwrites this with its own
+    // message on success.
+    if (isCurrent() && !errored) setResearchDone('Done.');
+    return page;
   };
 
   // --- Readable state -------------------------------------------------------
@@ -365,6 +373,7 @@ export function useEditionCopilot(
         title: `Asking Tako: ${args?.query ?? '…'}`,
         runId: surface.runId,
         status,
+        surfaceDone: surface.done !== null,
         claimed: claimedRunIds.current,
         lines: surface.lines,
         sources: surface.sources,
@@ -402,6 +411,7 @@ export function useEditionCopilot(
         title: `Researching: ${args?.topic ?? '…'}`,
         runId: surface.runId,
         status,
+        surfaceDone: surface.done !== null,
         claimed: claimedRunIds.current,
         lines: surface.lines,
         sources: surface.sources,
@@ -433,6 +443,7 @@ export function useEditionCopilot(
         headline: lead?.headline,
         dek: lead?.dek,
         body: lead?.body ?? '',
+        whole: true, // clear the lead's chart/table/sources too, not just its text
       });
       try {
         const fresh = await runResearch(topic, slot === 0, sectionToContext(page));
@@ -443,7 +454,14 @@ export function useEditionCopilot(
         const finalPage = { ...v.page, topic: shortSectionTitle(v.page.topic) };
         const newLead = finalPage.articles[0];
         await run.erased; // ensure the erase finished before we type the new copy in
-        await live.type(run.id, { headline: newLead?.headline, dek: newLead?.dek, body: newLead?.body ?? '' });
+        await live.type(run.id, {
+          headline: newLead?.headline,
+          dek: newLead?.dek,
+          body: newLead?.body ?? '',
+          chartImageUrl: newLead?.chartImageUrl,
+          table: newLead?.table,
+          sources: newLead?.sources,
+        });
         dispatch({ type: 'REPLACE_PAGE', slot, page: finalPage });
         setResearchDone(`Replaced “${page.topic}” → “${finalPage.topic}”.`);
         return `Replaced the “${page.topic}” section with freshly-researched reporting: “${finalPage.topic}”.`;
@@ -456,6 +474,7 @@ export function useEditionCopilot(
         title: `Re-researching: ${args?.topic ?? '…'}`,
         runId: surface.runId,
         status,
+        surfaceDone: surface.done !== null,
         claimed: claimedRunIds.current,
         lines: surface.lines,
         sources: surface.sources,
@@ -489,6 +508,7 @@ export function useEditionCopilot(
         headline: current.headline,
         dek: current.dek,
         body: current.body,
+        whole: true, // clear this story's chart/table/sources too, not just its text
       });
       try {
         const fresh = await runResearch(topic, slot === 0, articleToContext(current, page.topic));
@@ -501,7 +521,14 @@ export function useEditionCopilot(
         const picked = v.page.articles.find((a) => a.size === 'lead') ?? v.page.articles[0];
         const article: TArticle = { ...picked, size: current.size };
         await run.erased; // ensure the erase finished before we type the new copy in
-        await live.type(run.id, { headline: article.headline, dek: article.dek, body: article.body });
+        await live.type(run.id, {
+          headline: article.headline,
+          dek: article.dek,
+          body: article.body,
+          chartImageUrl: article.chartImageUrl,
+          table: article.table,
+          sources: article.sources,
+        });
         dispatch({ type: 'REPLACE_ARTICLE', slot, index, article });
         setResearchDone(`Updated the “${article.headline}” story.`);
         return `Replaced that story with freshly-researched reporting: “${article.headline}”.`;
@@ -514,6 +541,7 @@ export function useEditionCopilot(
         title: `Re-researching story: ${args?.topic ?? '…'}`,
         runId: surface.runId,
         status,
+        surfaceDone: surface.done !== null,
         claimed: claimedRunIds.current,
         lines: surface.lines,
         sources: surface.sources,
@@ -535,7 +563,14 @@ export function useEditionCopilot(
       if (!page || !page.articles[index]) return `No article at (slot ${slot}, index ${index}).`;
       const fresh = await runResearch(page.topic, slot === 0);
       if (!fresh) return 'No fresh data found for that topic.';
-      const withChart = fresh.articles.find((a) => a.chartImageUrl);
+      // Avoid handing this article a chart already shown on a SIBLING story; fall back to the
+      // first available chart only if every fresh one collides.
+      const usedOnPage = new Set(
+        page.articles.filter((_, i) => i !== index).map((a) => a.chartImageUrl).filter(Boolean) as string[],
+      );
+      const withChart =
+        fresh.articles.find((a) => a.chartImageUrl && !usedOnPage.has(a.chartImageUrl)) ??
+        fresh.articles.find((a) => a.chartImageUrl);
       if (!withChart?.chartImageUrl) return 'No fresh chart available for that topic.';
       dispatch({
         type: 'EDIT_ARTICLE',
@@ -551,6 +586,7 @@ export function useEditionCopilot(
         title: `Refreshing chart on page ${args?.slot ?? '…'}`,
         runId: surface.runId,
         status,
+        surfaceDone: surface.done !== null,
         claimed: claimedRunIds.current,
         lines: surface.lines,
         sources: surface.sources,

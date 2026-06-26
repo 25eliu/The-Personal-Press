@@ -13,12 +13,21 @@ class Bubble {
   state: ResearchViewState = initResearchView();
   constructor(private claimed: Set<number>) {}
   // One render: compute alreadyClaimed from the shared set, reduce, record any claim.
-  render(runId: number, status: ResearchStatus, live: Snapshot, done = false): Snapshot | null {
+  // `surfaceDone` mirrors the hook passing `surface.done !== null`; defaults to the
+  // bubble's own done so existing call sites read naturally.
+  render(
+    runId: number,
+    status: ResearchStatus,
+    live: Snapshot,
+    done = false,
+    surfaceDone = done,
+  ): Snapshot | null {
     const { next, display, claim } = reduceResearchView(this.state, {
       runId,
       status,
       live,
       done,
+      surfaceDone,
       alreadyClaimed: this.claimed.has(runId),
     });
     this.state = next;
@@ -57,6 +66,21 @@ test('the repro: a fresh bubble never shows the previous run’s content', () =>
 
   // A stays frozen on NBA even as B's run advances the surface.
   expect(a.render(2, 'complete', POLITICS, true)).toEqual(NBA);
+});
+
+test('leftover surface marked done is never claimed, even if the claim-set missed it', () => {
+  // The real FIFA→politics bug: the prior run's bubble claim was not recorded in the
+  // shared set (effect timing/unmount), so alreadyClaimed is FALSE. The surfaceDone
+  // guard must still stop the new bubble from binding the leftover FIFA surface.
+  const claimed = new Set([0]); // note: FIFA's id (1) is intentionally absent
+  const b = new Bubble(claimed);
+  // Pre-research window: surface still holds FIFA (id 1) WITH its terminal line.
+  expect(b.render(1, 'executing', NBA, false, /* surfaceDone */ true)).toBeNull();
+  expect(b.render(1, 'executing', NBA, false, true)).toBeNull(); // still no leak
+  // beginResearchRun mints a fresh, not-yet-done surface → now it claims its own run.
+  b.render(2, 'executing', snap(''), false, false);
+  expect(b.render(2, 'executing', POLITICS, false, false)).toEqual(POLITICS);
+  expect(b.render(2, 'complete', POLITICS, true, false)).toEqual(POLITICS);
 });
 
 test('supersede: a cancelled run freezes its own data, not the newer run’s', () => {
