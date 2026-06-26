@@ -83,6 +83,11 @@ export function hasRealContent(page: TPage): boolean {
   return page.articles.some((a) => a.headline !== NO_REPORT_HEADLINE);
 }
 
+export function researchPrompt(topic: string, today: TodayContext, context?: string): string {
+  return `Report the section: "${topic}" as of ${today.dateLine}. Stay strictly on this topic; ` +
+    `gather the LATEST sourced data about it with the Tako tools.${groundingBlock(context)}`;
+}
+
 export function distillPrompt(
   topic: string,
   isFront: boolean,
@@ -129,8 +134,7 @@ export async function runReporter(
     const { steps, usage } = await generateText({
       model: openai(MODEL),
       system: reporterSystem(masthead, today),
-      prompt: `Report the section: "${topic}" as of ${today.dateLine}. Stay strictly on this topic; ` +
-        `gather the LATEST sourced data about it with the Tako tools.`,
+      prompt: researchPrompt(topic, today, context),
       tools,
       stopWhen: isStepCount(6),
       abortSignal: signal,

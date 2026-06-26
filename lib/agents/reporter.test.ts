@@ -1,5 +1,5 @@
 import { expect, test } from 'vitest';
-import { attachArt, distillPrompt, emptyPage, findingsContext, sanitizePage } from '@/lib/agents/reporter';
+import { attachArt, distillPrompt, emptyPage, findingsContext, researchPrompt, sanitizePage } from '@/lib/agents/reporter';
 import { todayContext } from '@/lib/time/clock';
 import type { Findings } from '@/lib/tako/tools';
 import type { TPage } from '@/lib/schema';
@@ -71,4 +71,12 @@ test('distillPrompt embeds grounding context when provided', () => {
   expect(withCtx).toContain('Prior transfers article');
   const noCtx = distillPrompt('Premier League transfers', false, '{}', today);
   expect(noCtx).not.toContain('EXISTING COVERAGE');
+});
+
+test('researchPrompt embeds grounding context only when provided', () => {
+  const today = todayContext(new Date('2026-06-25T00:00:00Z'));
+  const withCtx = researchPrompt('Premier League transfers', today, 'Prior transfers article');
+  expect(withCtx).toContain('EXISTING COVERAGE');
+  expect(withCtx).toContain('Prior transfers article');
+  expect(researchPrompt('Premier League transfers', today)).not.toContain('EXISTING COVERAGE');
 });
