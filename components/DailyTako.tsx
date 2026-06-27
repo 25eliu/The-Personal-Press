@@ -5,7 +5,7 @@ import type { TNewspaper } from '@/lib/schema';
 import { streamGenerate } from '@/lib/stream/client';
 import { editionReducer, initialEditionState } from '@/lib/edition/state';
 import { isSuggestedBrief } from '@/lib/edition/dailyBriefs';
-import { getCachedEdition, setCachedEdition } from '@/lib/edition/exampleCache';
+import { getCachedEdition, setCachedEdition, purgeCachedEditionsOnce } from '@/lib/edition/exampleCache';
 import { replayCachedEdition } from '@/lib/edition/replayCache';
 import { playDemo } from '@/lib/demo/sample';
 import { BriefInput } from '@/components/BriefInput';
@@ -71,6 +71,7 @@ export function DailyTako() {
     phase === 'printing' ? 'printing' : pagesTotal === 0 ? 'planning' : 'typesetting';
 
   useEffect(() => {
+    purgeCachedEditionsOnce();
     setBw(localStorage.getItem('tako-bw') === 'true');
     setBrief(localStorage.getItem('tako-brief') ?? '');
   }, []);
@@ -111,8 +112,9 @@ export function DailyTako() {
       // Rebuild from the finished paper so dropped "no fresh reporting" sections
       // disappear from the spreads and section nav.
       dispatch({ type: 'COMPLETE', newspaper: e.newspaper });
+      // Mark generation done; the reveal scroll finishes typing the remaining pages and
+      // then calls onFinished → 'reading' (the page-flip reader). No fixed timeout.
       setPhase('printing');
-      setTimeout(() => setPhase('reading'), 900);
     } else if (e.type === 'error') {
       setError(e.message);
     }
@@ -230,7 +232,18 @@ export function DailyTako() {
               />
             </div>
           )}
-          <NewspaperView plan={plan} pages={pages} meta={meta} building={building} bw={bw} />
+          {/* One surface for both phases: while building, NewspaperView types each page in
+              within the bounded spread (front-to-back, auto-advancing); when generation is
+              done and the reveal finishes it flows straight into the page-flip reader. */}
+          <NewspaperView
+            plan={plan}
+            pages={pages}
+            meta={meta}
+            building={building}
+            bw={bw}
+            generationDone={phase === 'printing'}
+            onFinished={() => setPhase('reading')}
+          />
           {/* Editing only once the paper has finished printing, so edits can't race
               the generation stream's dispatches into the same reducer. */}
           <CopilotBridge

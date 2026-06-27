@@ -40,3 +40,20 @@ export function csvToTable(
   if (columns.length === 0) return undefined;
   return { caption, columns, rows: body.slice(0, maxRows) };
 }
+
+/**
+ * A compact, model-facing preview of a CSV: the header plus the first `maxRows` data
+ * rows, re-serialized as tidy CSV. Lets the distill model SEE the real numbers (so it
+ * writes accurate prose and picks a sensible chart) without flooding the prompt.
+ */
+export function csvPreview(csv: string, maxRows = 8): string | undefined {
+  if (!csv || csv.trim() === '') return undefined;
+  const parsed = parseCsv(csv);
+  if (parsed.length < 2) return undefined;
+  const [columns, ...body] = parsed;
+  const lines = [columns, ...body.slice(0, maxRows)].map((r) =>
+    r.map((cell) => (/[",\n]/.test(cell) ? `"${cell.replace(/"/g, '""')}"` : cell)).join(','),
+  );
+  const omitted = body.length - Math.min(body.length, maxRows);
+  return omitted > 0 ? `${lines.join('\n')}\n… (+${omitted} more rows)` : lines.join('\n');
+}

@@ -58,7 +58,7 @@ async function discoverEvents(today: TodayContext, signal?: AbortSignal): Promis
     return collectFindings(steps);
   } catch (err) {
     logCall('error', { scope: 'suggestions.discover', message: err instanceof Error ? err.message : String(err) });
-    return { cards: [], web: [] };
+    return { cards: [], web: [], contents: [] };
   }
 }
 

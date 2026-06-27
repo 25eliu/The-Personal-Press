@@ -1,10 +1,10 @@
 'use client';
-import { useEffect, useRef, useState } from 'react';
-import { AnimatePresence, motion } from 'framer-motion';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type { TPage } from '@/lib/schema';
 import type { SectionPlanItem } from '@/lib/stream/events';
-import { NewspaperPage } from './NewspaperPage';
 import { PaginatedReader } from './PaginatedReader';
+import { RevealingPage } from './RevealingPage';
+import { usePageRevealQueue } from '@/lib/edition/reveal';
 import { Typewriter } from '@/components/build/Typewriter';
 import { LEAF_H } from '@/lib/newspaper/leafLayout';
 
@@ -73,42 +73,47 @@ function PlanningSheet() {
   );
 }
 
-function PageSheet({ page, slot, topic, meta, building }: {
+/**
+ * One bounded page in the spread (600×LEAF_H, clipped). While building it shows the
+ * typewriter reveal IN PLACE: a page that's revealed/typing renders `RevealingPage` (so the
+ * text types within the page boundary, top-down); a page whose turn hasn't come (not yet
+ * generated, or queued behind an earlier page) shows the "setting type" skeleton.
+ */
+function PageSheet({ page, slot, topic, meta, building, mode, cursor }: {
   page: TPage | null; slot: number; topic: string; meta: Meta; building: boolean;
+  mode: 'done' | 'active' | 'pending'; cursor: number;
 }) {
   return (
     <div className="relative overflow-hidden" style={{ width: PAGE_W, height: LEAF_H }}>
-      <AnimatePresence mode="wait">
-        {page ? (
-          <motion.div key="p" initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.35 }}>
-            <NewspaperPage page={page} slot={slot} {...meta} />
-          </motion.div>
-        ) : building ? (
-          <motion.div key="s" exit={{ opacity: 0 }}>
-            <SkeletonPage topic={topic} />
-          </motion.div>
-        ) : (
-          <div className="paper w-full" style={{ minHeight: 560 }} />
-        )}
-      </AnimatePresence>
+      {page && (mode === 'done' || mode === 'active') ? (
+        <RevealingPage page={page} slot={slot} meta={meta} cursor={mode === 'done' ? Infinity : cursor} />
+      ) : building ? (
+        <SkeletonPage topic={topic} />
+      ) : (
+        <div className="paper w-full" style={{ minHeight: 560 }} />
+      )}
     </div>
   );
 }
 
-export function NewspaperView({ plan, pages, meta, building, bw }: {
+export function NewspaperView({ plan, pages, meta, building, bw, generationDone, onFinished }: {
   plan: SectionPlanItem[];
   pages: (TPage | null)[];
   meta: Meta;
   building: boolean;
   bw: boolean;
+  generationDone: boolean;
+  onFinished: () => void;
 }) {
-  const slots = plan.length > 0 ? plan.map((p) => p.slot) : pages.map((_, i) => i);
+  const slots = useMemo(
+    () => (plan.length > 0 ? plan.map((p) => p.slot) : pages.map((_, i) => i)),
+    [plan, pages],
+  );
   const topicFor = (i: number) => pages[i]?.topic ?? plan[i]?.topic ?? `Page ${i + 1}`;
 
   const [spread, setSpread] = useState(0);
   const [cw, setCw] = useState(1000);
   const [ch, setCh] = useState(800);
-  const [lightbox, setLightbox] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   const spreadCount = Math.max(1, Math.ceil(slots.length / 2));
@@ -132,12 +137,16 @@ export function NewspaperView({ plan, pages, meta, building, bw }: {
     return () => { ro.disconnect(); window.removeEventListener('resize', update); };
   }, []);
 
-  // Esc closes the chart lightbox.
+  // Front-to-back typewriter reveal, IN PLACE within the spread (see usePageRevealQueue).
+  const { doneSlots, activeSlot, cursor } = usePageRevealQueue(slots, pages, generationDone, onFinished);
+  const modeFor = (slot: number): 'done' | 'active' | 'pending' =>
+    doneSlots.has(slot) ? 'done' : slot === activeSlot ? 'active' : 'pending';
+
+  // Auto-advance the visible spread to follow the page currently typing (manual nav still works).
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setLightbox(null); };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, []);
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    if (activeSlot != null) setSpread(Math.floor(activeSlot / 2));
+  }, [activeSlot]);
 
   const portrait = cw < 720;
   // Match the reading paginator's fit EXACTLY (same spread dims, same width+height
@@ -213,20 +222,16 @@ export function NewspaperView({ plan, pages, meta, building, bw }: {
       {/* Scrollable, zoomable spread */}
       <div
         ref={scrollRef}
-        className="news-scroll w-full overflow-auto [&_img]:cursor-zoom-in"
+        className="news-scroll w-full overflow-auto"
         style={{ maxHeight: '82vh' }}
-        onClick={(e) => {
-          const t = e.target as HTMLElement;
-          if (t.tagName === 'IMG') setLightbox((t as HTMLImageElement).src);
-        }}
       >
         <div className="flex w-full justify-center">
           <div className={`spread-frame ${bw ? 'bw' : ''}`} style={{ zoom }}>
             <div className={`flex ${portrait ? 'flex-col gap-3' : 'flex-row'}`}>
-              <PageSheet page={pages[left] ?? null} slot={left} topic={topicFor(left)} meta={meta} building={building} />
+              <PageSheet page={pages[left] ?? null} slot={left} topic={topicFor(left)} meta={meta} building={building} mode={modeFor(left)} cursor={cursor} />
               {!portrait && <div className="spine" />}
               {right < slots.length ? (
-                <PageSheet page={pages[right] ?? null} slot={right} topic={topicFor(right)} meta={meta} building={building} />
+                <PageSheet page={pages[right] ?? null} slot={right} topic={topicFor(right)} meta={meta} building={building} mode={modeFor(right)} cursor={cursor} />
               ) : (
                 !portrait && <div className="paper" style={{ width: PAGE_W, height: LEAF_H }} />
               )}
@@ -242,20 +247,6 @@ export function NewspaperView({ plan, pages, meta, building, bw }: {
         <button onClick={() => setSpread((s) => Math.min(spreadCount - 1, s + 1))} disabled={cur >= spreadCount - 1} className="hover:opacity-70 disabled:opacity-30">Next ▶</button>
       </div>
 
-      {/* Chart lightbox — click a chart to zoom in */}
-      <AnimatePresence>
-        {lightbox && (
-          <motion.div
-            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-            className="fixed inset-0 z-50 flex items-center justify-center bg-black/85 p-6"
-            onClick={() => setLightbox(null)}
-          >
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={lightbox} alt="chart" className={`max-h-[90vh] max-w-[92vw] border-4 border-[var(--paper)] shadow-2xl ${bw ? 'bw' : ''}`} />
-            <button className="font-mono-news absolute right-5 top-5 rounded border border-[var(--paper)]/60 px-3 py-1 text-xs uppercase tracking-widest text-[var(--paper)]">Close ✕</button>
-          </motion.div>
-        )}
-      </AnimatePresence>
     </div>
   );
 }

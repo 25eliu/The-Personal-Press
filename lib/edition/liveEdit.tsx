@@ -9,7 +9,8 @@ import {
   type ReactNode,
 } from 'react';
 import { paragraphs } from '@/lib/newspaper/blocks';
-import type { TSource, TTableData } from '@/lib/schema';
+import { easeOut, linear, tween } from '@/lib/edition/tween';
+import type { TChartSpec, TSource, TTableData } from '@/lib/schema';
 
 /**
  * Live-edit choreography. When the Copy Desk changes a section, we don't swap the
@@ -48,8 +49,8 @@ export interface LiveEditState {
   // The NEW story's structural content, surfaced during typing/settling so the chart,
   // table and sources load in WITH the text instead of popping when the reducer commits
   // (until then `pages` still holds the old article). Only meaningful while `whole`.
-  chartImageUrl?: string;
   table?: TTableData;
+  chart?: TChartSpec; // the NEW interactive chart spec, so a 'chart' block reloads with the text
   sources?: TSource[];
   // The NEW head's kicker/byline, streamed in during typing so the kicker label and the
   // "By …" line return WITH the headline (they also erase with it — nothing lingers).
@@ -75,8 +76,8 @@ interface LiveEditController extends LiveEditState {
       headline?: string;
       dek?: string;
       body: string;
-      chartImageUrl?: string;
       table?: TTableData;
+      chart?: TChartSpec;
       sources?: TSource[];
       kicker?: string;
       byline?: string;
@@ -104,7 +105,6 @@ const IDLE: LiveEditState = {
   paras: [],
   body: '',
   revealed: 0,
-  chartImageUrl: undefined,
   table: undefined,
   sources: undefined,
 };
@@ -115,9 +115,6 @@ const prefersReduced = () =>
   typeof window !== 'undefined' &&
   typeof window.matchMedia === 'function' &&
   window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-
-const easeOut = (t: number) => 1 - (1 - t) * (1 - t);
-const linear = (t: number) => t;
 
 const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v));
 
@@ -171,28 +168,6 @@ export function liveBodyDone(s: LiveEditState): boolean {
 
 const eraseMs = (total: number) => Math.min(900, Math.max(280, total * 1.1));
 const typeMs = (total: number) => Math.min(1600, Math.max(500, total * 5));
-
-/** rAF tween from→to over `ms`; calls onStep each frame, resolves at the end. */
-function tween(
-  from: number,
-  to: number,
-  ms: number,
-  ease: (t: number) => number,
-  onStep: (v: number) => void,
-  cancelled: () => boolean,
-): Promise<void> {
-  return new Promise((resolve) => {
-    const start = performance.now();
-    const step = (now: number) => {
-      if (cancelled()) return resolve();
-      const t = Math.min(1, (now - start) / ms);
-      onStep(from + (to - from) * ease(t));
-      if (t >= 1) return resolve();
-      requestAnimationFrame(step);
-    };
-    requestAnimationFrame(step);
-  });
-}
 
 export function LiveEditProvider({ children }: { children: ReactNode }) {
   const [st, setSt] = useState<LiveEditState>(IDLE);
@@ -281,8 +256,8 @@ export function LiveEditProvider({ children }: { children: ReactNode }) {
         headline = '',
         dek = '',
         body,
-        chartImageUrl,
         table,
+        chart,
         sources,
         kicker,
         byline,
@@ -290,8 +265,8 @@ export function LiveEditProvider({ children }: { children: ReactNode }) {
         headline?: string;
         dek?: string;
         body: string;
-        chartImageUrl?: string;
         table?: TTableData;
+        chart?: TChartSpec;
         sources?: TSource[];
         kicker?: string;
         byline?: string;
@@ -313,8 +288,8 @@ export function LiveEditProvider({ children }: { children: ReactNode }) {
         dek,
         paras,
         body,
-        chartImageUrl,
         table,
+        chart,
         sources,
         kicker,
         byline,

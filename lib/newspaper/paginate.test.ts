@@ -21,7 +21,7 @@ function article(headline: string, paras: number, size: TPage['articles'][number
 // 200px paragraphs mean ~3 per column, ~6 per leaf → easy multi-leaf topics.
 const HEIGHT: Record<Block['kind'], number> = {
   head: 120,
-  figure: 200,
+  chart: 180,
   para: 200,
   table: 150,
   sources: 60,

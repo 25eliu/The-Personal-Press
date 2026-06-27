@@ -25,7 +25,18 @@ const SAMPLE: TNewspaper = {
             'Equities edged sideways through the session as investors held fire before the central bank decision. ' +
             'Breadth was thin and volume light, with rate-sensitive sectors leading the few moves of note. ' +
             'Analysts framed the calm as a coiled spring rather than complacency.',
-          chartImageUrl: 'https://trytako.com/api/v1/image/YY6ywbQIicFO4VekxJzi/',
+          table: {
+            caption: 'S&P 500 — daily close',
+            columns: ['Date', 'S&P 500'],
+            rows: [
+              ['Mon', '5280'],
+              ['Tue', '5274'],
+              ['Wed', '5291'],
+              ['Thu', '5288'],
+              ['Fri', '5302'],
+            ],
+          },
+          chart: { type: 'area', labelColumn: 'Date', valueColumns: ['S&P 500'] },
           sources: [
             { name: 'Federal Reserve Bank of St. Louis', url: 'https://fred.stlouisfed.org/' },
             { name: 'Reuters', url: 'https://www.reuters.com/' },
@@ -60,7 +71,18 @@ const SAMPLE: TNewspaper = {
           body:
             'Officials signalled patience, leaning on incoming data rather than pre-committing to cuts. ' +
             'The effective funds rate sat near recent levels, with markets pricing a gradual glide later in the year.',
-          chartImageUrl: 'https://trytako.com/api/v1/image/YY6ywbQIicFO4VekxJzi/',
+          table: {
+            caption: 'Effective federal funds rate',
+            columns: ['Month', 'Rate'],
+            rows: [
+              ['Jan', '5.3'],
+              ['Feb', '5.3'],
+              ['Mar', '5.1'],
+              ['Apr', '4.9'],
+              ['May', '4.6'],
+            ],
+          },
+          chart: { type: 'line', labelColumn: 'Month', valueColumns: ['Rate'], unit: '%' },
           sources: [{ name: 'Federal Reserve', url: 'https://www.federalreserve.gov/' }],
         },
         {

@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
-import { getCachedEdition, setCachedEdition } from '@/lib/edition/exampleCache';
+import { getCachedEdition, setCachedEdition, purgeCachedEditionsOnce } from '@/lib/edition/exampleCache';
 import type { TNewspaper } from '@/lib/schema';
 
 function makeLocalStorage() {
@@ -45,4 +45,14 @@ test('expires entries past the TTL', () => {
   setCachedEdition(BRIEF, PAPER, 0);
   expect(getCachedEdition(BRIEF, SIX_HOURS - 1)).toEqual(PAPER);   // still fresh
   expect(getCachedEdition(BRIEF, SIX_HOURS + 1)).toBeNull();        // expired
+});
+
+test('purges cached editions once, then leaves the cache alone', () => {
+  setCachedEdition(BRIEF, PAPER, 1000);
+  purgeCachedEditionsOnce();                          // first run wipes existing content
+  expect(getCachedEdition(BRIEF, 1000)).toBeNull();
+
+  setCachedEdition(BRIEF, PAPER, 1000);               // mechanism still works afterward
+  purgeCachedEditionsOnce();                          // sentinel set — no-op now
+  expect(getCachedEdition(BRIEF, 1000)).toEqual(PAPER);
 });

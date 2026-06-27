@@ -3,7 +3,9 @@ import { openai } from '@ai-sdk/openai';
 import { BRAND, MODEL, WORD_CAPS } from '@/lib/config';
 import { Page, type TPage } from '@/lib/schema';
 import { groundingBlock, reporterSystem } from '@/lib/agents/prompts';
-import { buildTakoTools, collectFindings, type Findings } from '@/lib/tako/tools';
+import { buildTakoTools, collectFindings, csvForCard, type Findings } from '@/lib/tako/tools';
+import { csvPreview, csvToTable } from '@/lib/tako/csv-to-table';
+import { validateChartSpec } from '@/lib/newspaper/chartSpec';
 import { normalizeCardSources, normalizeWebResult, validUrl } from '@/lib/tako/normalize';
 import { findingSourceLabels } from '@/lib/tako/sources';
 import { toolDetail, toolLabel } from '@/lib/tako/labels';
@@ -22,6 +24,9 @@ export function findingsContext(f: Findings): string {
   const cards = f.cards.map((c) => ({
     title: c.title, description: c.description ?? c.semantic_description,
     image_url: validUrl(c.image_url), webpage_url: validUrl(c.webpage_url),
+    // The raw numbers behind the card (header + first rows), so the model writes
+    // accurate prose AND can pick a chart that fits the actual columns.
+    data: csvPreview(csvForCard(c, f) ?? ''),
     sources: normalizeCardSources(c),
   }));
   const web = f.web.map((w) => ({
@@ -40,47 +45,39 @@ export function sanitizePage(page: TPage): TPage {
       const url = validUrl(s.url);
       return url ? { name: s.name, url } : { name: s.name };
     });
-    return {
-      ...a,
-      chartImageUrl: validUrl(a.chartImageUrl),
-      chartEmbedUrl: validUrl(a.chartEmbedUrl),
-      sources,
-    };
+    return { ...a, sources };
   });
   return { ...page, articles };
 }
 
 /**
- * Match Tako chart cards to the page's articles so each chart image appears AT MOST ONCE
- * per section — no story shows the same card twice. Tako can return the same card across
- * several searches, so the pool is first deduped by image_url; charts the distill step
- * already named are honoured and excluded from reuse. Assignment is a global greedy
- * best-match (strongest keyword overlap wins first) rather than per-article independent
- * picks, so two stories can't both grab the one card they happen to share. Pure: returns a
- * new page, never mutates the input.
+ * Attach the DATA every visual is drawn from — React charts only, never a Tako image.
+ * Two data sources, in priority order:
+ *  1. A card's CSV (`tako_contents`), keyword-matched to the most relevant article (each
+ *     CSV card and each article used at most once, strongest overlap first). CSV is
+ *     authoritative: it overrides a weaker model-transcribed table.
+ *  2. The model's own `table` (numbers it transcribed from the research) for articles no
+ *     CSV card matched.
+ * Every resulting `table` gets a validated/inferred `chart` spec; an article with neither
+ * CSV nor a model table simply has no visual. Pure: returns a new page.
  */
-export function attachArt(page: TPage, f: Findings): TPage {
-  // Dedup the card pool by image_url; keep the first occurrence of each distinct chart.
-  const pool: { img: string; embed?: string; kw: Set<string> }[] = [];
-  const seenImg = new Set<string>();
+export function attachData(page: TPage, f: Findings): TPage {
+  // Pool of CSV-bearing cards, deduped by source URL, with keyword sets for matching.
+  const pool: { csv: string; title: string; kw: Set<string> }[] = [];
+  const seen = new Set<string>();
   for (const c of f.cards) {
-    const img = validUrl(c.image_url);
-    if (!img || seenImg.has(img)) continue;
-    seenImg.add(img);
-    pool.push({ img, embed: validUrl(c.embed_url), kw: keywords(`${c.title ?? ''} ${c.description ?? ''}`) });
+    const csv = csvForCard(c, f);
+    if (!csv) continue;
+    const key = c.webpage_url ?? '';
+    if (key && seen.has(key)) continue;
+    if (key) seen.add(key);
+    pool.push({ csv, title: c.title ?? '', kw: keywords(`${c.title ?? ''} ${c.description ?? ''}`) });
   }
 
-  // Charts already on the page (model-named in distill) are kept and never re-handed out.
-  const used = new Set<string>();
-  for (const a of page.articles) {
-    const existing = validUrl(a.chartImageUrl);
-    if (existing) used.add(existing);
-  }
-
-  // Score every (chart-less article × pooled card) pair by keyword overlap.
+  // Score (article × CSV card) pairs by keyword overlap; greedy global best-match so two
+  // stories can't both claim the one series they share.
   const pairs: { ai: number; pi: number; score: number }[] = [];
   page.articles.forEach((a, ai) => {
-    if (a.chartImageUrl) return; // already has a chart
     const aKw = keywords(`${a.headline} ${a.kicker}`);
     pool.forEach((card, pi) => {
       let score = 0;
@@ -88,21 +85,22 @@ export function attachArt(page: TPage, f: Findings): TPage {
       if (score > 0) pairs.push({ ai, pi, score });
     });
   });
-
-  // Greedy: strongest matches first; each article and each card image used at most once.
   pairs.sort((x, y) => y.score - x.score);
-  const assigned = new Map<number, { img: string; embed?: string }>();
+  const tableFor = new Map<number, ReturnType<typeof csvToTable>>();
+  const usedCard = new Set<number>();
   for (const { ai, pi } of pairs) {
-    if (assigned.has(ai)) continue;
-    const card = pool[pi];
-    if (used.has(card.img)) continue;
-    assigned.set(ai, { img: card.img, embed: card.embed });
-    used.add(card.img);
+    if (tableFor.has(ai) || usedCard.has(pi)) continue;
+    const t = csvToTable(pool[pi].csv, pool[pi].title || page.articles[ai].headline);
+    if (!t) continue;
+    tableFor.set(ai, t);
+    usedCard.add(pi);
   }
 
   const articles = page.articles.map((a, ai) => {
-    const pick = assigned.get(ai);
-    return pick ? { ...a, chartImageUrl: pick.img, chartEmbedUrl: pick.embed } : a;
+    const table = tableFor.get(ai) ?? a.table; // CSV authoritative, else the model's table
+    const chart = table ? validateChartSpec(a.chart, table) : undefined;
+    if (!table) return a.chart ? { ...a, chart: undefined } : a;
+    return { ...a, table, chart };
   });
   return { ...page, articles };
 }
@@ -150,6 +148,18 @@ if you must use older data, work an "as of <date>" into the kicker or dek. Every
 at least one source drawn from this research. Do not invent facts, sources, or dates. Respect word
 caps (lead <= ${WORD_CAPS.lead}, standard <= ${WORD_CAPS.standard}, brief <= ${WORD_CAPS.brief}).
 If the research is thin, write fewer, shorter articles rather than padding.
+
+VISUALS ARE REACT CHARTS DRAWN FROM A "table" — there are NO images. Any article built on
+numeric data MUST carry a "table" AND a "chart" so it can be drawn:
+- "table": { "caption", "columns" (header names), "rows" (string cells) } holding the REAL
+  numbers. If a finding includes "data" (CSV), copy those rows into the table. Otherwise
+  transcribe the SPECIFIC numbers you cite in the prose (a short series of 3+ points). Never
+  invent numbers — if you have no real series for a story, omit the table (it shows text only).
+- "chart": { "type" (line/bar/area), "labelColumn" (x-axis/category column), "valueColumns"
+  (one or more numeric series), optional "unit" "$"/"%" } — naming columns EXACTLY as they
+  appear in the table header. (If you give a table but an unsure/blank chart, one is inferred.)
+Prefer a time series → line/area; a category comparison → bar. Give as many stories a chart as
+the data honestly supports.
 
 RESEARCH (JSON):
 ${ctx}`;
@@ -236,7 +246,7 @@ export async function runReporter(
       object = r.object;
     }
     logCall('distill.done', { topic, articles: object.articles.length });
-    return attachArt(sanitizePage({ ...object, topic }), findings);
+    return attachData(sanitizePage({ ...object, topic }), findings);
   } catch (err) {
     logCall('error', { scope: 'reporter', topic, message: err instanceof Error ? err.message : String(err) });
     return emptyPage(topic);

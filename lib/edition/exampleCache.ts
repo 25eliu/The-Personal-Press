@@ -9,6 +9,9 @@ import type { TNewspaper } from '@/lib/schema';
 const KEY = 'tako-example-editions';
 const TTL_MS = 6 * 60 * 60 * 1000; // 6 hours
 
+// Bump this suffix to force another one-time purge of all cached example editions.
+const PURGE_KEY = 'tako-example-editions-purged-v1';
+
 type Entry = { newspaper: TNewspaper; ts: number };
 type Store = Record<string, Entry>;
 
@@ -47,4 +50,20 @@ export function setCachedEdition(brief: string, newspaper: TNewspaper, now: numb
   const store = read();
   store[norm(brief)] = { newspaper, ts: now };
   write(store);
+}
+
+/**
+ * One-time wipe of all cached example editions. Gated by a sentinel so it runs once per
+ * browser: after the first run the sentinel is set and subsequent loads are no-ops, so the
+ * cache resumes working normally. Bump PURGE_KEY's suffix to trigger a fresh purge later.
+ */
+export function purgeCachedEditionsOnce(): void {
+  if (typeof window === 'undefined') return;
+  try {
+    if (window.localStorage.getItem(PURGE_KEY)) return;
+    window.localStorage.removeItem(KEY);
+    window.localStorage.setItem(PURGE_KEY, '1');
+  } catch {
+    /* storage unavailable — best-effort */
+  }
 }

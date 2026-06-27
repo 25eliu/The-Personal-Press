@@ -18,8 +18,10 @@ export function takoSearchGuidance(): string {
 - Make a couple of targeted tako_search calls, each on a DIFFERENT facet of the topic
   (distinct metric / sub-angle / entity) so you gather a VARIED set of cards — not the same
   card again. A section becomes several stories, and each one should be able to show its own
-  distinct chart. Then call tako_contents with the best card's webpage_url to pull its raw
-  numbers (so a table can be built from them).
+  distinct chart.
+- CRUCIAL: charts are drawn from RAW NUMBERS, not images — so call tako_contents on the
+  webpage_url of the TOP 2–3 data cards (the ones you'd want to chart), to pull their CSV
+  numbers. Do this for several cards, not just one, so most stories have data to chart.
 - Prefer cards whose title/description match the live subject; ignore stale-looking ones.
 - NEVER invent facts. Everything must trace to a returned card or web result.`;
 }

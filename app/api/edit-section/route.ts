@@ -3,6 +3,7 @@ import { hasRealContent, runReporter } from '@/lib/agents/reporter';
 import { todayContext } from '@/lib/time/clock';
 import { encodeEvent } from '@/lib/stream/ndjson';
 import type { GenerateEvent } from '@/lib/stream/events';
+import { ndjsonStreamResponse } from '@/lib/stream/serverStream';
 
 export const runtime = 'nodejs';
 export const maxDuration = 120;
@@ -30,51 +31,24 @@ export async function POST(req: Request) {
 
   const signal = req.signal;
 
-  const stream = new ReadableStream({
-    async start(controller) {
-      let closed = false;
-      const safeEnqueue = (e: GenerateEvent) => {
-        if (closed || signal.aborted) return;
-        try {
-          controller.enqueue(encodeEvent(e));
-        } catch {
-          closed = true;
-        }
-      };
-      const onAbort = () => { closed = true; };
-      signal.addEventListener('abort', onAbort);
-
-      try {
-        safeEnqueue({ type: 'section_started', slot: 0, topic });
-        const page = await runReporter(topic, isFront, BRAND, todayContext(), {
-          context,
-          onActivity: (a) => safeEnqueue({ type: 'tool_activity', slot: 0, topic, tool: a.tool, label: a.label, detail: a.detail, sources: a.sources }),
-          onDraftToken: (t) => safeEnqueue({ type: 'token', slot: 0, text: t }),
-          signal,
-        });
-        if (!hasRealContent(page)) {
-          safeEnqueue({ type: 'error', message: `No fresh reporting found for “${topic}”.` });
-        } else {
-          safeEnqueue({ type: 'section_done', slot: 0, page });
-        }
-      } catch (err) {
-        safeEnqueue({ type: 'error', message: err instanceof Error ? err.message : 'Section research failed.' });
-      } finally {
-        signal.removeEventListener('abort', onAbort);
-        if (!closed) {
-          try { controller.close(); } catch { /* already closed */ }
-        }
+  return ndjsonStreamResponse<GenerateEvent>(
+    signal,
+    encodeEvent,
+    async (emit) => {
+      emit({ type: 'section_started', slot: 0, topic });
+      const page = await runReporter(topic, isFront, BRAND, todayContext(), {
+        context,
+        onActivity: (a) =>
+          emit({ type: 'tool_activity', slot: 0, topic, tool: a.tool, label: a.label, detail: a.detail, sources: a.sources }),
+        onDraftToken: (t) => emit({ type: 'token', slot: 0, text: t }),
+        signal,
+      });
+      if (!hasRealContent(page)) {
+        emit({ type: 'error', message: `No fresh reporting found for “${topic}”.` });
+      } else {
+        emit({ type: 'section_done', slot: 0, page });
       }
     },
-    cancel() {
-      // Client went away — stop writing.
-    },
-  });
-
-  return new Response(stream, {
-    headers: {
-      'Content-Type': 'application/x-ndjson; charset=utf-8',
-      'Cache-Control': 'no-cache, no-transform',
-    },
-  });
+    (err) => ({ type: 'error', message: err instanceof Error ? err.message : 'Section research failed.' }),
+  );
 }

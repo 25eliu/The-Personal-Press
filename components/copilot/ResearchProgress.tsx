@@ -3,11 +3,13 @@ import { useEffect, useRef, useState } from 'react';
 import {
   initResearchView,
   reduceResearchView,
+  type ChartPreview,
   type ResearchStatus,
   type Snapshot,
 } from '@/lib/edition/researchView';
+import { NewsChart } from '@/components/newspaper/NewsChart';
 
-const EMPTY: Snapshot = { lines: [], sources: [], answer: '', done: '' };
+const EMPTY: Snapshot = { lines: [], sources: [], answer: '', done: '', chart: null };
 
 /**
  * Live research surface inside a copilot chat bubble while a Tako-backed action runs
@@ -35,6 +37,7 @@ export function ResearchProgress({
   sources = [],
   answer = '',
   done,
+  chart = null,
   runId,
   status,
   surfaceDone,
@@ -45,6 +48,7 @@ export function ResearchProgress({
   sources?: string[];
   answer?: string;
   done?: string | null;
+  chart?: ChartPreview | null;
   runId?: number;
   status?: ResearchStatus;
   surfaceDone?: boolean;
@@ -68,16 +72,16 @@ export function ResearchProgress({
   if (!ownership) {
     complete = Boolean(done);
     if (complete && frozenLegacy === null) {
-      setFrozenLegacy({ lines, sources, answer, done: '' });
+      setFrozenLegacy({ lines, sources, answer, done: '', chart });
     }
-    view = frozenLegacy ?? { lines, sources, answer, done: '' };
+    view = frozenLegacy ?? { lines, sources, answer, done: '', chart };
     doneLine = typeof done === 'string' && done ? done : undefined;
   } else {
     complete = status === 'complete';
     const { next, display, claim } = reduceResearchView(viewRef.current, {
       runId,
       status,
-      live: { lines, sources, answer, done: typeof done === 'string' ? done : '' },
+      live: { lines, sources, answer, done: typeof done === 'string' ? done : '', chart },
       complete,
       surfaceDone: Boolean(surfaceDone),
       alreadyClaimed: claimed.has(runId),
@@ -117,6 +121,20 @@ export function ResearchProgress({
           {view.answer}
           {!complete && <span className="live-dot ml-0.5 text-[var(--accent)]">▍</span>}
         </p>
+      )}
+
+      {/* The interactive chart this run produced — the SAME NewsChart that lands in the
+          paper, mirrored here so generation/revamp shows its figure as it commits. */}
+      {view.chart && (
+        <div className="mb-2 overflow-x-auto">
+          <NewsChart
+            chart={view.chart.chart}
+            table={view.chart.table}
+            caption={view.chart.caption}
+            width={232}
+            height={150}
+          />
+        </div>
       )}
 
       {/* The specific outlets being pulled from — the heart of "show me your sources". */}

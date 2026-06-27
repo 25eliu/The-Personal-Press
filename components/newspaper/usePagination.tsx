@@ -28,7 +28,7 @@ export function usePagination(pages: TPage[], meta: Meta): { leaves: Leaf[]; mea
   const signature = useMemo(
     () =>
       JSON.stringify(
-        pages.map((p) => [p.topic, p.articles.map((a) => [a.size, a.headline, a.dek ?? '', a.body.length, !!a.chartImageUrl, !!a.table])]),
+        pages.map((p) => [p.topic, p.articles.map((a) => [a.size, a.headline, a.dek ?? '', a.body.length, !!a.table, !!a.chart])]),
       ) + `|${meta.masthead}|${meta.tagline}|${meta.edition}|${meta.dateLine}`,
     [pages, meta],
   );

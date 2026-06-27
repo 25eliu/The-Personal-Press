@@ -15,12 +15,19 @@
  * pre-handler window (when the surface still holds the previous run's content) renders
  * nothing.
  */
+import type { TChartSpec, TTableData } from '@/lib/schema';
+
+/** A chart this run produced, mirrored into the bubble (frozen with the rest on done). */
+export type ChartPreview = { chart: TChartSpec; table: TTableData; caption: string };
+
 export type Snapshot = {
   lines: string[];
   sources: string[];
   answer: string;
   /** This run's terminal line (e.g. "Replaced …" / "Done."); '' while still streaming. */
   done: string;
+  /** The chart this run built, surfaced once it lands; null until/unless one exists. */
+  chart?: ChartPreview | null;
 };
 export type ResearchStatus = 'inProgress' | 'executing' | 'complete';
 
