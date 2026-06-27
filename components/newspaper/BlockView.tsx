@@ -1,5 +1,4 @@
 import type { Block } from '@/lib/newspaper/blocks';
-import { FIGURE_MAX_H } from '@/lib/newspaper/leafLayout';
 import {
   useLiveEdit,
   liveHeadline,
@@ -13,6 +12,7 @@ import {
   liveEraseFrac,
 } from '@/lib/edition/liveEdit';
 import { DataTable } from './DataTable';
+import { NewsChart } from './NewsChart';
 import { SourceCredit } from './SourceCredit';
 
 // Column-tuned headline sizes — smaller than the front-page treatment so a lead
@@ -150,23 +150,16 @@ export function BlockView({ block }: { block: Block }) {
   // pop at commit. Body-only edits (live.whole === false) skip this and render statically
   // below, leaving the chart/sources untouched. Only blocks that already exist in this
   // article's shred animate; a chart added to a story that had none appears at the commit.
-  if (liveTarget && live.whole && (kind === 'figure' || kind === 'table' || kind === 'sources')) {
+  if (liveTarget && live.whole && (kind === 'chart' || kind === 'table' || kind === 'sources')) {
     if (live.phase === 'erasing' || live.phase === 'waiting') return null;
-    if (kind === 'figure') {
-      if (!live.chartImageUrl || !liveHeadDone(live)) return null;
+    if (kind === 'chart') {
+      // The interactive chart sits just below the head; reload it from live state once the
+      // headline+dek are in so it rises with the new copy.
+      if (!live.chart || !live.table || !liveHeadDone(live)) return null;
       return (
-        <figure className="live-edit-rise border border-black/80 p-1">
-          <div className="halftone overflow-hidden">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              src={live.chartImageUrl}
-              alt={live.headline}
-              className="w-full object-contain"
-              style={{ maxHeight: FIGURE_MAX_H }}
-            />
-          </div>
-          <figcaption className="mt-1 text-[10px] italic leading-snug">{live.headline}</figcaption>
-        </figure>
+        <div className="live-edit-rise">
+          <NewsChart chart={live.chart} table={live.table} caption={live.headline} />
+        </div>
       );
     }
     if (kind === 'table') {
@@ -197,21 +190,8 @@ export function BlockView({ block }: { block: Block }) {
     );
   }
 
-  if (kind === 'figure' && article.chartImageUrl) {
-    return (
-      <figure className="border border-black/80 p-1">
-        <div className="halftone overflow-hidden">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
-            src={article.chartImageUrl}
-            alt={article.headline}
-            className="w-full object-contain"
-            style={{ maxHeight: FIGURE_MAX_H }}
-          />
-        </div>
-        <figcaption className="mt-1 text-[10px] italic leading-snug">{article.headline}</figcaption>
-      </figure>
-    );
+  if (kind === 'chart' && article.chart && article.table) {
+    return <NewsChart chart={article.chart} table={article.table} caption={article.headline} />;
   }
 
   if (kind === 'para') {

@@ -15,6 +15,16 @@ export const TableData = z.object({
   rows: z.array(z.array(z.string())),
 });
 
+// How to draw `table` as an interactive chart. `labelColumn`/`valueColumns` name
+// columns that MUST exist in the article's table; this is validated/repaired in
+// lib/newspaper/chartSpec.ts before it ever reaches the renderer.
+export const ChartSpec = z.object({
+  type: z.enum(['line', 'bar', 'area']),
+  labelColumn: z.string(),
+  valueColumns: z.array(z.string()).min(1),
+  unit: z.string().optional(),
+});
+
 export const Article = z.object({
   kicker: z.string(),
   headline: z.string(),
@@ -22,9 +32,10 @@ export const Article = z.object({
   byline: z.string().default('Tako Wire'),
   body: z.string(),
   size: z.enum(['lead', 'standard', 'brief']),
-  chartImageUrl: z.string().optional(),
-  chartEmbedUrl: z.string().optional(),
+  // Visuals are React charts built from `table` (no Tako PNGs). When the research carries
+  // numbers, the article ships a `table` + a `chart` spec describing how to draw it.
   table: TableData.optional(),
+  chart: ChartSpec.optional(),
   sources: z.array(Source).min(1),
 });
 
@@ -51,6 +62,7 @@ export const SectionPlan = z.object({
 
 export type TSource = z.infer<typeof Source>;
 export type TTableData = z.infer<typeof TableData>;
+export type TChartSpec = z.infer<typeof ChartSpec>;
 export type TArticle = z.infer<typeof Article>;
 export type TPage = z.infer<typeof Page>;
 export type TNewspaper = z.infer<typeof Newspaper>;

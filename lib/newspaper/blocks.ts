@@ -8,7 +8,7 @@ import type { TArticle, TPage } from '@/lib/schema';
  * onto the next page, exactly like real newsprint. Paragraphs are the only places
  * an article is allowed to split; everything else stays whole.
  */
-export type BlockKind = 'head' | 'figure' | 'para' | 'table' | 'sources';
+export type BlockKind = 'head' | 'chart' | 'para' | 'table' | 'sources';
 
 export interface Block {
   id: string; // stable key, also used to look up the measured height
@@ -48,11 +48,15 @@ export function flattenTopic(page: TPage, topicIndex: number): Block[] {
       });
 
     add('head');
-    if (article.chartImageUrl) add('figure');
+    // Visuals are React charts drawn from data — no Tako images. A chart block needs both
+    // a spec and its table.
+    if (article.chart && article.table) add('chart');
     paragraphs(article.body).forEach((para, pi) =>
       add('para', pi, para, article.size === 'lead' && pi === 0),
     );
-    if (article.table) add('table');
+    // Show the raw data table only when it isn't already the chart's source (avoid
+    // printing the same numbers twice: chart + identical table).
+    if (article.table && !article.chart) add('table');
     add('sources');
   });
   return blocks;

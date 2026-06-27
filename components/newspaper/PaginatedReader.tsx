@@ -1,6 +1,6 @@
 'use client';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { AnimatePresence, motion } from 'framer-motion';
+import { motion } from 'framer-motion';
 import type { TPage } from '@/lib/schema';
 import { LEAF_H, LEAF_W } from '@/lib/newspaper/leafLayout';
 import { useLiveEdit } from '@/lib/edition/liveEdit';
@@ -150,7 +150,6 @@ export function PaginatedReader({ pages, meta, bw }: { pages: TPage[]; meta: Met
   const [flip, setFlip] = useState<{ dir: 1 | -1; from: number; to: number } | null>(null);
   const [cw, setCw] = useState(1000);
   const [ch, setCh] = useState(800);
-  const [lightbox, setLightbox] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const wrapRef = useRef<HTMLDivElement>(null);
 
@@ -226,8 +225,7 @@ export function PaginatedReader({ pages, meta, bw }: { pages: TPage[]; meta: Met
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') setLightbox(null);
-      else if (e.key === 'ArrowRight') go(true);
+      if (e.key === 'ArrowRight') go(true);
       else if (e.key === 'ArrowLeft') go(false);
     };
     window.addEventListener('keydown', onKey);
@@ -312,14 +310,7 @@ export function PaginatedReader({ pages, meta, bw }: { pages: TPage[]; meta: Met
       </div>
 
       {/* The open spread — fit to the viewport, no scroll */}
-      <div
-        ref={scrollRef}
-        className="w-full overflow-hidden [&_img]:cursor-zoom-in"
-        onClick={(e) => {
-          const t = e.target as HTMLElement;
-          if (t.tagName === 'IMG') setLightbox((t as HTMLImageElement).src);
-        }}
-      >
+      <div ref={scrollRef} className="w-full overflow-hidden">
         <div className="flex w-full justify-center py-1">
           {/* Relative wrapper shrink-wraps the zoomed frame, so the corner controls
               (kept OUTSIDE the zoom for a constant size) pin to the real paper corners.
@@ -414,20 +405,6 @@ export function PaginatedReader({ pages, meta, bw }: { pages: TPage[]; meta: Met
         </div>
       )}
 
-      {/* Chart lightbox */}
-      <AnimatePresence>
-        {lightbox && (
-          <motion.div
-            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-            className="fixed inset-0 z-50 flex items-center justify-center bg-black/85 p-6"
-            onClick={() => setLightbox(null)}
-          >
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={lightbox} alt="chart" className={`max-h-[90vh] max-w-[92vw] border-4 border-[var(--paper)] shadow-2xl ${bw ? 'bw' : ''}`} />
-            <button className="font-mono-news absolute right-5 top-5 rounded border border-[var(--paper)]/60 px-3 py-1 text-xs uppercase tracking-widest text-[var(--paper)]">Close ✕</button>
-          </motion.div>
-        )}
-      </AnimatePresence>
     </div>
   );
 }

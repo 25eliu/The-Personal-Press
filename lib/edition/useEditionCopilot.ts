@@ -2,7 +2,8 @@
 import { createElement, useEffect, useRef, useState, type Dispatch, type RefObject } from 'react';
 import { useCopilotAction, useCopilotReadable } from '@copilotkit/react-core';
 import type { EditionAction, EditionState } from '@/lib/edition/state';
-import type { TArticle } from '@/lib/schema';
+import type { TArticle, TChartSpec } from '@/lib/schema';
+import { chartPatchFromJson, sliceTableRows, summarizeChart, validateChartSpec } from '@/lib/newspaper/chartSpec';
 import { validateArticlePatch, validatePage } from '@/lib/edition/validate';
 import { hasRealContent } from '@/lib/agents/reporter';
 import { streamEditSection } from '@/lib/stream/editClient';
@@ -10,6 +11,7 @@ import { articleToContext, sectionToContext, shortSectionTitle } from '@/lib/edi
 import { streamAskTako } from '@/lib/stream/askClient';
 import type { AskSource } from '@/lib/stream/askEvents';
 import { ResearchProgress } from '@/components/copilot/ResearchProgress';
+import type { ChartPreview, ResearchStatus } from '@/lib/edition/researchView';
 import { useLiveEdit } from '@/lib/edition/liveEdit';
 
 const SIZES = ['lead', 'standard', 'brief'] as const;
@@ -50,7 +52,8 @@ export function useEditionCopilot(
     sources: string[];
     answer: string;
     done: string | null;
-  }>({ runId: 0, lines: [], sources: [], answer: '', done: null });
+    chart: ChartPreview | null;
+  }>({ runId: 0, lines: [], sources: [], answer: '', done: null, chart: null });
 
   // Run ids already claimed by a bubble — seeded with the pre-first-run sentinel 0 so
   // no bubble ever binds the initial empty surface. Bubbles add their claimed id here.
@@ -63,6 +66,27 @@ export function useEditionCopilot(
   const setResearchAnswer = (v: string | ((prev: string) => string)) =>
     setSurface((s) => ({ ...s, answer: typeof v === 'function' ? v(s.answer) : v }));
   const setResearchDone = (v: string | null) => setSurface((s) => ({ ...s, done: v }));
+  // Surface the chart a research run produced so it mirrors into the chat bubble (frozen
+  // with the rest of the snapshot on completion). Cleared at the start of every run.
+  const setResearchChart = (v: ChartPreview | null) => setSurface((s) => ({ ...s, chart: v }));
+  const chartPreviewFor = (a: TArticle | undefined): ChartPreview | null =>
+    a && a.chart && a.table ? { chart: a.chart, table: a.table, caption: a.headline } : null;
+
+  // Every research action's render is the SAME shared-surface bubble (only the title
+  // differs) — one helper instead of five near-identical createElement blocks.
+  const renderResearch = (title: string, status: ResearchStatus) =>
+    createElement(ResearchProgress, {
+      title,
+      runId: surface.runId,
+      status,
+      surfaceDone: surface.done !== null,
+      claimed: claimedRunIds.current,
+      lines: surface.lines,
+      sources: surface.sources,
+      answer: surface.answer,
+      done: surface.done,
+      chart: surface.chart,
+    });
 
   // Each research/ask action gets its OWN abort controller and a monotonic run id.
   // Sharing one signal/surface (the old bug) let a still-streaming run bleed its
@@ -83,7 +107,7 @@ export function useEditionCopilot(
     researchAbortRef.current = controller;
     abortRef.current?.signal.addEventListener('abort', () => controller.abort(), { once: true });
     const runId = ++researchRunId.current;
-    setSurface({ runId, lines: [], sources: [], answer: '', done: null });
+    setSurface({ runId, lines: [], sources: [], answer: '', done: null, chart: null });
     return { signal: controller.signal, isCurrent: () => researchRunId.current === runId };
   };
 
@@ -102,6 +126,13 @@ export function useEditionCopilot(
 
   const getArticle = (slot: number, index: number): TArticle | undefined =>
     stateRef.current.pages[slot]?.articles[index];
+
+  // A compact, copilot-facing view of an article's chart: the spec + a data summary
+  // (ranges, not raw rows) plus the columns available to switch to — enough to reason
+  // about ("what's the peak?") and reshape ("plot the other series") without flooding
+  // context. No chart → null.
+  const chartReadable = (a: TArticle) =>
+    a.chart && a.table ? { ...summarizeChart(a.chart, a.table), columns: a.table.columns } : null;
 
   const runResearch = async (topic: string, isFront: boolean, context?: string) => {
     const { signal, isCurrent } = beginResearchRun();
@@ -155,7 +186,7 @@ export function useEditionCopilot(
               byline: a.byline,
               size: a.size,
               body: a.body,
-              hasChart: Boolean(a.chartImageUrl),
+              chart: chartReadable(a),
               sourceCount: a.sources.length,
             })),
           },
@@ -216,6 +247,113 @@ export function useEditionCopilot(
         title: 'Editing article',
         lines: args?.headline ? [`New headline: “${args.headline}”`] : ['Rewriting…'],
         done: status === 'complete' ? 'Updated.' : undefined,
+      }),
+  });
+
+  // --- Reshape an existing data chart (reads the chart in readable state above) ------
+  useCopilotAction({
+    name: 'editChart',
+    description:
+      "Reshape an article's EXISTING data chart in place: switch its type (line/bar/area), " +
+      'change which column is the x-axis (labelColumn), pick which numeric columns are plotted ' +
+      '(valueColumns), set the unit, or filter to a window of rows (lastN most-recent rows, or an ' +
+      'inclusive fromLabel/toLabel range over the label column). Column names must match the chart ' +
+      "data (see each article's chart.columns in the readable state). Only works where chart data " +
+      'exists; if a story has no chart, use refreshChart to research fresh data. Does not touch the article text.',
+    parameters: [
+      { name: 'slot', type: 'number', description: 'Page slot (0 = front page).', required: true },
+      { name: 'index', type: 'number', description: '0-based article index.', required: true },
+      { name: 'type', type: 'string', description: 'Chart type: line, bar, or area.', required: false },
+      { name: 'labelColumn', type: 'string', description: 'Column to use as the x-axis/category (must exist in the data).', required: false },
+      { name: 'valueColumns', type: 'string[]', description: 'Numeric columns to plot as series (must exist in the data).', required: false },
+      { name: 'unit', type: 'string', description: 'Axis unit, e.g. "$" or "%".', required: false },
+      { name: 'lastN', type: 'number', description: 'Keep only the last N rows (e.g. "last 5 years").', required: false },
+      { name: 'fromLabel', type: 'string', description: 'Start of an inclusive label-column window (e.g. "2020").', required: false },
+      { name: 'toLabel', type: 'string', description: 'End of an inclusive label-column window (e.g. "2025").', required: false },
+    ],
+    handler: async ({ slot, index, type, labelColumn, valueColumns, unit, lastN, fromLabel, toLabel }) => {
+      const current = getArticle(slot, index);
+      if (!current) return `No article at (slot ${slot}, index ${index}).`;
+      if (!current.table || !current.chart) {
+        return 'That story has no chart to edit. Use refreshChart to research fresh data for it.';
+      }
+      const ranged =
+        lastN || fromLabel || toLabel
+          ? sliceTableRows(current.table, { lastN, from: fromLabel, to: toLabel })
+          : current.table;
+      const candidate: Partial<TChartSpec> = {
+        type: (type as TChartSpec['type']) ?? current.chart.type,
+        labelColumn: labelColumn ?? current.chart.labelColumn,
+        valueColumns: valueColumns ?? current.chart.valueColumns,
+        unit: unit ?? current.chart.unit,
+      };
+      const chart = validateChartSpec(candidate, ranged);
+      if (!chart) return 'Could not build a chart from those columns — check the names against the chart data.';
+      const patch: Partial<TArticle> = { chart, table: ranged };
+      const result = validateArticlePatch(current, patch);
+      if (!result.ok) return result.error;
+      dispatch({ type: 'EDIT_ARTICLE', slot, index, patch });
+      const what = [
+        type ? `${chart.type}` : null,
+        valueColumns ? `series: ${chart.valueColumns.join(', ')}` : null,
+        labelColumn ? `x: ${chart.labelColumn}` : null,
+        lastN || fromLabel || toLabel ? `${ranged.rows.length} rows` : null,
+        unit ? `unit ${chart.unit}` : null,
+      ]
+        .filter(Boolean)
+        .join(', ');
+      return `Reshaped the chart${what ? ` (${what})` : ''}.`;
+    },
+    render: ({ status }) =>
+      createElement(ResearchProgress, {
+        title: 'Reshaping chart',
+        lines: ['Redrawing…'],
+        done: status === 'complete' ? 'Chart updated.' : undefined,
+      }),
+  });
+
+  useCopilotAction({
+    name: 'addChart',
+    description:
+      'Draw a NEW data chart on a story from numbers you provide directly — the on-demand way to add a ' +
+      'graphic WITHOUT a full re-research pass. Supply a small REAL data table as JSON; the chart is ' +
+      'inferred from it (or shape it with the optional type/labelColumn/valueColumns/unit). Adds a chart ' +
+      'where a story has none, or replaces an existing one. When you need current figures (standings, ' +
+      'prices, scores), call askTako FIRST to fetch them, then pass those real numbers here — never invent them.',
+    parameters: [
+      { name: 'slot', type: 'number', description: 'Page slot (0 = front page).', required: true },
+      { name: 'index', type: 'number', description: '0-based article index to attach the chart to.', required: true },
+      {
+        name: 'table',
+        type: 'string',
+        description:
+          'The data as JSON: { "caption", "columns" (header names; the FIRST column is the label/category, ' +
+          'the rest hold the numbers), "rows" (array of string-cell arrays) }. Use REAL numbers from askTako ' +
+          'or from the story — at least 2 columns and 3+ rows.',
+        required: true,
+      },
+      { name: 'type', type: 'string', description: 'Chart type: line, bar, or area. Omit to infer (time series → line/area, categories → bar).', required: false },
+      { name: 'labelColumn', type: 'string', description: 'Column for the x-axis/category. Omit to use the first column.', required: false },
+      { name: 'valueColumns', type: 'string[]', description: 'Numeric columns to plot as series. Omit to use every numeric column.', required: false },
+      { name: 'unit', type: 'string', description: 'Axis unit, e.g. "$" or "%".', required: false },
+    ],
+    handler: async ({ slot, index, table, type, labelColumn, valueColumns, unit }) => {
+      const current = getArticle(slot, index);
+      if (!current) return `No article at (slot ${slot}, index ${index}).`;
+      const spec: Partial<TChartSpec> = { type: type as TChartSpec['type'], labelColumn, valueColumns, unit };
+      const built = chartPatchFromJson(table, spec);
+      if ('error' in built) return built.error;
+      const patch: Partial<TArticle> = { table: built.table, chart: built.chart };
+      const result = validateArticlePatch(current, patch);
+      if (!result.ok) return result.error;
+      dispatch({ type: 'EDIT_ARTICLE', slot, index, patch });
+      return `Added a ${built.chart.type} chart (${built.chart.valueColumns.join(', ')} by ${built.chart.labelColumn}) to the "${current.headline}" story.`;
+    },
+    render: ({ status }) =>
+      createElement(ResearchProgress, {
+        title: 'Drawing chart',
+        lines: ['Plotting the data…'],
+        done: status === 'complete' ? 'Chart added.' : undefined,
       }),
   });
 
@@ -368,18 +506,7 @@ export function useEditionCopilot(
       const body = answer.trim() || 'No fresh data found for that question.';
       return cited ? `${body}\n\nSources:\n${cited}` : body;
     },
-    render: ({ status, args }) =>
-      createElement(ResearchProgress, {
-        title: `Asking Tako: ${args?.query ?? '…'}`,
-        runId: surface.runId,
-        status,
-        surfaceDone: surface.done !== null,
-        claimed: claimedRunIds.current,
-        lines: surface.lines,
-        sources: surface.sources,
-        answer: surface.answer,
-        done: surface.done,
-      }),
+    render: ({ status, args }) => renderResearch(`Asking Tako: ${args?.query ?? '…'}`, status),
   });
 
   // --- Research-backed edits (Tako, live in chat) --------------------------
@@ -403,21 +530,11 @@ export function useEditionCopilot(
       if (!hasRealContent(v.page)) return `No fresh reporting found for “${topic}”.`;
       const finalPage = { ...v.page, topic: shortSectionTitle(v.page.topic) };
       dispatch({ type: 'ADD_SECTION', page: finalPage, position });
+      setResearchChart(chartPreviewFor(finalPage.articles.find((a) => a.chart && a.table)));
       setResearchDone(`Added “${finalPage.topic}”.`);
       return `Added a new section: “${finalPage.topic}”.`;
     },
-    render: ({ status, args }) =>
-      createElement(ResearchProgress, {
-        title: `Researching: ${args?.topic ?? '…'}`,
-        runId: surface.runId,
-        status,
-        surfaceDone: surface.done !== null,
-        claimed: claimedRunIds.current,
-        lines: surface.lines,
-        sources: surface.sources,
-        answer: surface.answer,
-        done: surface.done,
-      }),
+    render: ({ status, args }) => renderResearch(`Researching: ${args?.topic ?? '…'}`, status),
   });
 
   useCopilotAction({
@@ -461,24 +578,14 @@ export function useEditionCopilot(
         // "refresh". The whole section — header, lead and every story — rises in together.
         dispatch({ type: 'REPLACE_PAGE', slot, page: finalPage });
         live.end(run.id, { revealSlot: slot });
+        setResearchChart(chartPreviewFor(finalPage.articles.find((a) => a.chart && a.table)));
         setResearchDone(`Replaced “${page.topic}” → “${finalPage.topic}”.`);
         return `Replaced the “${page.topic}” section with freshly-researched reporting: “${finalPage.topic}”.`;
       } finally {
         live.end(run.id); // no-op on success (stale id); restores the original on early return
       }
     },
-    render: ({ status, args }) =>
-      createElement(ResearchProgress, {
-        title: `Re-researching: ${args?.topic ?? '…'}`,
-        runId: surface.runId,
-        status,
-        surfaceDone: surface.done !== null,
-        claimed: claimedRunIds.current,
-        lines: surface.lines,
-        sources: surface.sources,
-        answer: surface.answer,
-        done: surface.done,
-      }),
+    render: ({ status, args }) => renderResearch(`Re-researching: ${args?.topic ?? '…'}`, status),
   });
 
   useCopilotAction({
@@ -523,31 +630,21 @@ export function useEditionCopilot(
           headline: article.headline,
           dek: article.dek,
           body: article.body,
-          chartImageUrl: article.chartImageUrl,
           table: article.table,
+          chart: article.chart,
           sources: article.sources,
           kicker: article.kicker,
           byline: article.byline,
         });
         dispatch({ type: 'REPLACE_ARTICLE', slot, index, article });
+        setResearchChart(chartPreviewFor(article));
         setResearchDone(`Updated the “${article.headline}” story.`);
         return `Replaced that story with freshly-researched reporting: “${article.headline}”.`;
       } finally {
         live.end(run.id); // commit on success; restore the original on any early return
       }
     },
-    render: ({ status, args }) =>
-      createElement(ResearchProgress, {
-        title: `Re-researching story: ${args?.topic ?? '…'}`,
-        runId: surface.runId,
-        status,
-        surfaceDone: surface.done !== null,
-        claimed: claimedRunIds.current,
-        lines: surface.lines,
-        sources: surface.sources,
-        answer: surface.answer,
-        done: surface.done,
-      }),
+    render: ({ status, args }) => renderResearch(`Re-researching story: ${args?.topic ?? '…'}`, status),
   });
 
   useCopilotAction({
@@ -563,34 +660,30 @@ export function useEditionCopilot(
       if (!page || !page.articles[index]) return `No article at (slot ${slot}, index ${index}).`;
       const fresh = await runResearch(page.topic, slot === 0);
       if (!fresh) return 'No fresh data found for that topic.';
-      // Avoid handing this article a chart already shown on a SIBLING story; fall back to the
-      // first available chart only if every fresh one collides.
+      // Avoid handing this article a chart whose data already appears on a SIBLING story;
+      // fall back to the first data-backed chart only if every fresh one collides.
       const usedOnPage = new Set(
-        page.articles.filter((_, i) => i !== index).map((a) => a.chartImageUrl).filter(Boolean) as string[],
+        page.articles
+          .filter((_, i) => i !== index)
+          .map((a) => a.table?.caption)
+          .filter(Boolean) as string[],
       );
-      const withChart =
-        fresh.articles.find((a) => a.chartImageUrl && !usedOnPage.has(a.chartImageUrl)) ??
-        fresh.articles.find((a) => a.chartImageUrl);
-      if (!withChart?.chartImageUrl) return 'No fresh chart available for that topic.';
+      const pick =
+        fresh.articles.find((a) => a.chart && a.table && !usedOnPage.has(a.table.caption)) ??
+        fresh.articles.find((a) => a.chart && a.table);
+      if (!pick || !(pick.chart && pick.table)) {
+        return 'No fresh chart data available for that topic.';
+      }
       dispatch({
         type: 'EDIT_ARTICLE',
         slot,
         index,
-        patch: { chartImageUrl: withChart.chartImageUrl, chartEmbedUrl: withChart.chartEmbedUrl },
+        patch: { table: pick.table, chart: pick.chart },
       });
+      setResearchChart(chartPreviewFor(pick));
       setResearchDone('Refreshed the chart.');
       return 'Refreshed the chart with the latest Tako data.';
     },
-    render: ({ status, args }) =>
-      createElement(ResearchProgress, {
-        title: `Refreshing chart on page ${args?.slot ?? '…'}`,
-        runId: surface.runId,
-        status,
-        surfaceDone: surface.done !== null,
-        claimed: claimedRunIds.current,
-        lines: surface.lines,
-        sources: surface.sources,
-        done: surface.done,
-      }),
+    render: ({ status, args }) => renderResearch(`Refreshing chart on page ${args?.slot ?? '…'}`, status),
   });
 }

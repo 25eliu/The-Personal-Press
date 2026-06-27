@@ -23,5 +23,8 @@ export const COL_W = Math.floor((LEAF_W - PAD_X * 2 - COL_GAP) / 2);
 // per-leaf; the paginator subtracts the measured header height when packing.
 export const CONTENT_H = LEAF_H - PAD_TOP - PAD_BOTTOM;
 
-// Charts/tables are clamped so a single figure can never be taller than a column.
-export const FIGURE_MAX_H = 250;
+// Interactive chart drawing area — a FIXED height (and column-fitted width) so a chart
+// block measures identically in the hidden paginator pass and the real leaf. A stable
+// measured height is what stops a chart from loading tall then snapping horizontal.
+export const CHART_H = 168;
+export const CHART_W = COL_W - 12; // inside the figure's 1px border + p-1 padding
