@@ -5,13 +5,19 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 
 test('isExampleBrief matches the suggested briefs, case/space-insensitively', () => {
   expect(isExampleBrief(EXAMPLE_BRIEFS[0])).toBe(true);
-  expect(isExampleBrief('  AI Startups, the Fed, the Premier League  ')).toBe(true);
+  expect(isExampleBrief('  World News, Business, Sports  ')).toBe(true);
 });
 
 test('the pinned brief leads the pool and is comma-separated (no "and")', () => {
   expect(EXAMPLE_POOL[0]).toBe(PINNED_BRIEF);
-  expect(PINNED_BRIEF).toBe('fifa, developer news, stocks');
+  expect(PINNED_BRIEF).toBe('world news, business, technology');
   expect(EXAMPLE_POOL.every((b) => !/\band\b/.test(b))).toBe(true);
+});
+
+test('the example pool is all general beats — no specific named entities', () => {
+  // The pool must stay broad (Tako always has data); guard against re-introducing specifics.
+  const banned = /\b(fifa|spacex|tesla|openai|nba|nfl|premier league|the fed|bitcoin|ethereum)\b/i;
+  expect(EXAMPLE_POOL.every((b) => !banned.test(b))).toBe(true);
 });
 
 test('isExampleBrief rejects anything that is not a suggested brief', () => {

@@ -1,7 +1,7 @@
 'use client';
 import type { TArticle, TPage } from '@/lib/schema';
 import { Masthead } from './Masthead';
-import { NewsChart } from './NewsChart';
+import { GraphicView } from './GraphicView';
 import { DataTable } from './DataTable';
 import { SourceCredit } from './SourceCredit';
 
@@ -53,9 +53,9 @@ function RevealingArticle({ article, cursor, typing }: { article: TArticle; curs
       )}
       {headDone && <p className="mt-1 text-[10px] uppercase tracking-wide text-black/60">By {article.byline}</p>}
 
-      {bodyDone && article.chart && article.table && (
+      {bodyDone && article.graphic && article.table && (
         <div className="live-edit-rise mt-2">
-          <NewsChart chart={article.chart} table={article.table} caption={article.headline} animate />
+          <GraphicView graphic={article.graphic} table={article.table} caption={article.headline} animate />
         </div>
       )}
 
@@ -70,7 +70,7 @@ function RevealingArticle({ article, cursor, typing }: { article: TArticle; curs
         </div>
       )}
 
-      {bodyDone && article.table && !article.chart && (
+      {bodyDone && article.table && !article.graphic && (
         <div className="live-edit-rise">
           <DataTable table={article.table} />
         </div>

@@ -15,10 +15,10 @@
  * pre-handler window (when the surface still holds the previous run's content) renders
  * nothing.
  */
-import type { TChartSpec, TTableData } from '@/lib/schema';
+import type { TGraphic, TTableData } from '@/lib/schema';
 
-/** A chart this run produced, mirrored into the bubble (frozen with the rest on done). */
-export type ChartPreview = { chart: TChartSpec; table: TTableData; caption: string };
+/** A graphic this run produced, mirrored into the bubble (frozen with the rest on done). */
+export type GraphicPreview = { graphic: TGraphic; table: TTableData; caption: string };
 
 export type Snapshot = {
   lines: string[];
@@ -26,8 +26,11 @@ export type Snapshot = {
   answer: string;
   /** This run's terminal line (e.g. "Replaced …" / "Done."); '' while still streaming. */
   done: string;
-  /** The chart this run built, surfaced once it lands; null until/unless one exists. */
-  chart?: ChartPreview | null;
+  /** The graphic this run built, surfaced once it lands; null until/unless one exists. */
+  graphic?: GraphicPreview | null;
+  /** The section this run changed — drives the "↳ See it in …" jump link. Frozen with the
+   *  rest of the snapshot so an old bubble always points at the section IT changed. */
+  nav?: { slot: number; label: string } | null;
 };
 export type ResearchStatus = 'inProgress' | 'executing' | 'complete';
 

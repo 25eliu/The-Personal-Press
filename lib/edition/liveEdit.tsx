@@ -10,7 +10,7 @@ import {
 } from 'react';
 import { paragraphs } from '@/lib/newspaper/blocks';
 import { easeOut, linear, tween } from '@/lib/edition/tween';
-import type { TChartSpec, TSource, TTableData } from '@/lib/schema';
+import type { TGraphic, TSource, TTableData } from '@/lib/schema';
 
 /**
  * Live-edit choreography. When the Copy Desk changes a section, we don't swap the
@@ -50,7 +50,7 @@ export interface LiveEditState {
   // table and sources load in WITH the text instead of popping when the reducer commits
   // (until then `pages` still holds the old article). Only meaningful while `whole`.
   table?: TTableData;
-  chart?: TChartSpec; // the NEW interactive chart spec, so a 'chart' block reloads with the text
+  graphic?: TGraphic; // the NEW graphic spec, so a 'graphic' block reloads with the text
   sources?: TSource[];
   // The NEW head's kicker/byline, streamed in during typing so the kicker label and the
   // "By …" line return WITH the headline (they also erase with it — nothing lingers).
@@ -77,7 +77,7 @@ interface LiveEditController extends LiveEditState {
       dek?: string;
       body: string;
       table?: TTableData;
-      chart?: TChartSpec;
+      graphic?: TGraphic;
       sources?: TSource[];
       kicker?: string;
       byline?: string;
@@ -257,7 +257,7 @@ export function LiveEditProvider({ children }: { children: ReactNode }) {
         dek = '',
         body,
         table,
-        chart,
+        graphic,
         sources,
         kicker,
         byline,
@@ -266,7 +266,7 @@ export function LiveEditProvider({ children }: { children: ReactNode }) {
         dek?: string;
         body: string;
         table?: TTableData;
-        chart?: TChartSpec;
+        graphic?: TGraphic;
         sources?: TSource[];
         kicker?: string;
         byline?: string;
@@ -289,7 +289,7 @@ export function LiveEditProvider({ children }: { children: ReactNode }) {
         paras,
         body,
         table,
-        chart,
+        graphic,
         sources,
         kicker,
         byline,

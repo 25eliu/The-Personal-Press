@@ -1,13 +1,33 @@
 import { expect, test } from 'vitest';
 import { z } from 'zod';
-import { Article, Newspaper, Page } from '@/lib/schema';
+import { Article, DraftPage, Newspaper, Page } from '@/lib/schema';
 
 // Regression: zod .url() emits JSON Schema `format: "uri"`, which OpenAI
 // structured-output strict mode rejects and breaks every distill call. The
-// Page schema (passed to generateObject) must contain no `format: uri`.
-test('Page distill schema has no unsupported "uri" format', () => {
-  const json = JSON.stringify(z.toJSONSchema(Page));
+// DraftPage schema (the one actually passed to generateObject) must contain
+// no `format: uri`.
+test('DraftPage distill schema has no unsupported "uri" format', () => {
+  const json = JSON.stringify(z.toJSONSchema(DraftPage));
   expect(json).not.toMatch(/"format"\s*:\s*"uri"/);
+});
+
+test('Article round-trips a routed graphic (discriminated union)', () => {
+  const parsed = Article.safeParse({
+    kicker: 'k', headline: 'h', body: 'b', size: 'standard',
+    table: { caption: 'c', columns: ['Team', 'Pts'], rows: [['A', '7']] },
+    graphic: { kind: 'standings', entityColumn: 'Team', statColumns: ['Pts'] },
+    sources: [{ name: 'X' }],
+  });
+  expect(parsed.success).toBe(true);
+});
+
+test('Article rejects an unknown graphic kind', () => {
+  const parsed = Article.safeParse({
+    kicker: 'k', headline: 'h', body: 'b', size: 'brief',
+    graphic: { kind: 'pie', labelColumn: 'A', valueColumn: 'B' },
+    sources: [{ name: 'X' }],
+  });
+  expect(parsed.success).toBe(false);
 });
 
 test('Article requires at least one source', () => {

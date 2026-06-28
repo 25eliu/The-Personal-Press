@@ -14,25 +14,15 @@ import {
 } from 'recharts';
 import type { TChartSpec, TTableData } from '@/lib/schema';
 import { chartData } from '@/lib/newspaper/chartSpec';
+import { colValues } from '@/lib/newspaper/tableShape';
+import { dateAxisFormatter, primarySeries, shortLabel, withUnit } from '@/lib/newspaper/format';
 import { CHART_H, CHART_W } from '@/lib/newspaper/leafLayout';
+import { GraphicFigure } from './GraphicFigure';
 
 // Newsprint palette: ink + greys (grayscale, so it survives the B&W toggle unchanged) and
 // dash patterns, so multiple series read apart WITHOUT colour. No chart chrome / gridlines.
 const INK = ['#141414', '#5b5b5b', '#8c8c8c', '#b6b6b6'];
 const DASH = ['', '5 3', '2 3', '7 3 2 3'];
-
-function abbr(n: number): string {
-  const a = Math.abs(n);
-  if (a >= 1e9) return `${(n / 1e9).toFixed(1)}B`;
-  if (a >= 1e6) return `${(n / 1e6).toFixed(1)}M`;
-  if (a >= 1e3) return `${(n / 1e3).toFixed(1)}k`;
-  return `${Math.round(n * 100) / 100}`;
-}
-function withUnit(n: number, unit?: string): string {
-  if (unit === '%') return `${abbr(n)}%`;
-  if (unit === '$') return `$${abbr(n)}`;
-  return abbr(n);
-}
 
 // Module-level so it isn't re-created each render. recharts clones the `content` element,
 // injecting active/payload/label; `unit` is passed through explicitly for formatting.
@@ -41,16 +31,18 @@ function ChartTooltip({
   payload,
   label,
   unit,
+  labelFmt,
 }: {
   active?: boolean;
   payload?: Array<{ name?: string; value?: number; dataKey?: string }>;
   label?: string | number;
   unit?: string;
+  labelFmt?: (raw: string | number) => string;
 }) {
   if (!active || !payload?.length) return null;
   return (
     <div style={{ background: 'var(--paper, #f4efe4)', border: '1px solid #141414', padding: '3px 6px', fontSize: 10, lineHeight: 1.3 }}>
-      <div style={{ fontWeight: 700 }}>{label}</div>
+      <div style={{ fontWeight: 700 }}>{label != null ? (labelFmt ? labelFmt(label) : label) : ''}</div>
       {payload.map((p) => (
         <div key={p.dataKey}>
           {p.name}: {withUnit(Number(p.value), unit)}
@@ -79,9 +71,18 @@ type Props = {
  * B&W toggle leaves it legible. Animation is off by default (deterministic measurement).
  */
 export function NewsChart({ chart, table, caption, width = CHART_W, height = CHART_H, className, animate = false }: Props) {
-  const data = chartData(table, chart);
+  // Plot only a single comparable scale: a mixed price/percent pair on one Y-axis would draw
+  // the small series as an unreadable flat line, so the odd group is dropped (and noted below).
+  const series = primarySeries(table, chart.valueColumns);
+  const dropped = series.length < chart.valueColumns.length;
+  const data = chartData(table, { ...chart, valueColumns: series });
+  // ISO timestamps → "Jan 7" / "14:00"; the whole axis picks one granularity that fits.
+  const fmtX = dateAxisFormatter(colValues(table, chart.labelColumn));
+
   const axisTick = { fontSize: 9, fill: '#222' };
-  const margin = { top: 6, right: 8, left: 0, bottom: 0 };
+  // Right margin reserves room for the LAST x-axis tick label so it sits inside the plot
+  // instead of being clipped at the figure's edge.
+  const margin = { top: 6, right: 16, left: 0, bottom: 0 };
   const common = { width, height, data, margin } as const;
 
   const grid = <CartesianGrid stroke="rgba(0,0,0,0.12)" vertical={false} />;
@@ -93,6 +94,7 @@ export function NewsChart({ chart, table, caption, width = CHART_W, height = CHA
       axisLine={{ stroke: '#141414' }}
       interval="preserveStartEnd"
       minTickGap={16}
+      tickFormatter={fmtX}
     />
   );
   const yAxis = (
@@ -105,17 +107,17 @@ export function NewsChart({ chart, table, caption, width = CHART_W, height = CHA
     />
   );
   const tooltip = (
-    <Tooltip content={<ChartTooltip unit={chart.unit} />} cursor={{ fill: 'rgba(0,0,0,0.06)', stroke: 'rgba(0,0,0,0.2)' }} />
+    <Tooltip content={<ChartTooltip unit={chart.unit} labelFmt={fmtX} />} cursor={{ fill: 'rgba(0,0,0,0.06)', stroke: 'rgba(0,0,0,0.2)' }} />
   );
-  const legend = chart.valueColumns.length > 1 ? <Legend wrapperStyle={{ fontSize: 9 }} iconSize={8} /> : null;
+  const legend = series.length > 1 ? <Legend wrapperStyle={{ fontSize: 9 }} iconSize={8} /> : null;
 
   let inner;
   if (chart.type === 'bar') {
     inner = (
       <BarChart {...common}>
         {grid}{xAxis}{yAxis}{tooltip}{legend}
-        {chart.valueColumns.map((c, i) => (
-          <Bar key={c} dataKey={c} fill={INK[i % INK.length]} isAnimationActive={animate} />
+        {series.map((c, i) => (
+          <Bar key={c} name={shortLabel(c)} dataKey={c} fill={INK[i % INK.length]} isAnimationActive={animate} />
         ))}
       </BarChart>
     );
@@ -123,9 +125,10 @@ export function NewsChart({ chart, table, caption, width = CHART_W, height = CHA
     inner = (
       <AreaChart {...common}>
         {grid}{xAxis}{yAxis}{tooltip}{legend}
-        {chart.valueColumns.map((c, i) => (
+        {series.map((c, i) => (
           <Area
             key={c}
+            name={shortLabel(c)}
             type="monotone"
             dataKey={c}
             stroke="#141414"
@@ -142,9 +145,10 @@ export function NewsChart({ chart, table, caption, width = CHART_W, height = CHA
     inner = (
       <LineChart {...common}>
         {grid}{xAxis}{yAxis}{tooltip}{legend}
-        {chart.valueColumns.map((c, i) => (
+        {series.map((c, i) => (
           <Line
             key={c}
+            name={shortLabel(c)}
             type="monotone"
             dataKey={c}
             dot={false}
@@ -158,12 +162,14 @@ export function NewsChart({ chart, table, caption, width = CHART_W, height = CHA
     );
   }
 
+  // Be honest when an incompatible series was dropped for legibility.
+  const fullCaption = dropped ? `${caption} · showing ${shortLabel(series[0])}` : caption;
+
   return (
-    <figure className={`border border-black/80 p-1 ${className ?? ''}`}>
+    <GraphicFigure caption={fullCaption} className={className}>
       <div className="overflow-hidden" style={{ width, height }}>
         {inner}
       </div>
-      <figcaption className="mt-1 text-[10px] italic leading-snug">{caption}</figcaption>
-    </figure>
+    </GraphicFigure>
   );
 }

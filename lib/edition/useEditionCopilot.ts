@@ -2,8 +2,9 @@
 import { createElement, useEffect, useRef, useState, type Dispatch, type RefObject } from 'react';
 import { useCopilotAction, useCopilotReadable } from '@copilotkit/react-core';
 import type { EditionAction, EditionState } from '@/lib/edition/state';
-import type { TArticle, TChartSpec } from '@/lib/schema';
-import { chartPatchFromJson, sliceTableRows, summarizeChart, validateChartSpec } from '@/lib/newspaper/chartSpec';
+import type { TArticle, TGraphicKind } from '@/lib/schema';
+import { sliceTableRows } from '@/lib/newspaper/chartSpec';
+import { type GraphicHint, buildGraphic, graphicPatchFromJson, summarizeGraphic } from '@/lib/newspaper/graphic';
 import { validateArticlePatch, validatePage } from '@/lib/edition/validate';
 import { hasRealContent } from '@/lib/agents/reporter';
 import { streamEditSection } from '@/lib/stream/editClient';
@@ -11,7 +12,9 @@ import { articleToContext, sectionToContext, shortSectionTitle } from '@/lib/edi
 import { streamAskTako } from '@/lib/stream/askClient';
 import type { AskSource } from '@/lib/stream/askEvents';
 import { ResearchProgress } from '@/components/copilot/ResearchProgress';
-import type { ChartPreview, ResearchStatus } from '@/lib/edition/researchView';
+import type { GraphicPreview, ResearchStatus } from '@/lib/edition/researchView';
+
+const GRAPHIC_KIND_LIST = 'chart, scatter, composition, standings, stat, schedule';
 import { useLiveEdit } from '@/lib/edition/liveEdit';
 
 const SIZES = ['lead', 'standard', 'brief'] as const;
@@ -26,6 +29,7 @@ export function useEditionCopilot(
   state: EditionState,
   dispatch: Dispatch<EditionAction>,
   abortRef: RefObject<AbortController | null>,
+  onNavigate?: (slot: number) => void,
 ) {
   // Always-current snapshot so action handlers never close over stale state.
   // Updated in an effect (not during render) so the ref is committed, not torn.
@@ -52,8 +56,9 @@ export function useEditionCopilot(
     sources: string[];
     answer: string;
     done: string | null;
-    chart: ChartPreview | null;
-  }>({ runId: 0, lines: [], sources: [], answer: '', done: null, chart: null });
+    graphic: GraphicPreview | null;
+    nav: { slot: number; label: string } | null;
+  }>({ runId: 0, lines: [], sources: [], answer: '', done: null, graphic: null, nav: null });
 
   // Run ids already claimed by a bubble — seeded with the pre-first-run sentinel 0 so
   // no bubble ever binds the initial empty surface. Bubbles add their claimed id here.
@@ -66,11 +71,17 @@ export function useEditionCopilot(
   const setResearchAnswer = (v: string | ((prev: string) => string)) =>
     setSurface((s) => ({ ...s, answer: typeof v === 'function' ? v(s.answer) : v }));
   const setResearchDone = (v: string | null) => setSurface((s) => ({ ...s, done: v }));
-  // Surface the chart a research run produced so it mirrors into the chat bubble (frozen
+  // Surface the graphic a research run produced so it mirrors into the chat bubble (frozen
   // with the rest of the snapshot on completion). Cleared at the start of every run.
-  const setResearchChart = (v: ChartPreview | null) => setSurface((s) => ({ ...s, chart: v }));
-  const chartPreviewFor = (a: TArticle | undefined): ChartPreview | null =>
-    a && a.chart && a.table ? { chart: a.chart, table: a.table, caption: a.headline } : null;
+  const setResearchGraphic = (v: GraphicPreview | null) => setSurface((s) => ({ ...s, graphic: v }));
+  const graphicPreviewFor = (a: TArticle | undefined): GraphicPreview | null =>
+    a && a.graphic && a.table ? { graphic: a.graphic, table: a.table, caption: a.headline } : null;
+
+  // The section a change landed on, used for the chat bubble's "↳ See it in …" jump link.
+  const labelForSlot = (slot: number): string => stateRef.current.pages[slot]?.topic ?? `Page ${slot + 1}`;
+  const navFor = (slot: number | undefined): { slot: number; label: string } | null =>
+    typeof slot === 'number' ? { slot, label: labelForSlot(slot) } : null;
+  const setResearchNav = (v: { slot: number; label: string } | null) => setSurface((s) => ({ ...s, nav: v }));
 
   // Every research action's render is the SAME shared-surface bubble (only the title
   // differs) — one helper instead of five near-identical createElement blocks.
@@ -85,7 +96,9 @@ export function useEditionCopilot(
       sources: surface.sources,
       answer: surface.answer,
       done: surface.done,
-      chart: surface.chart,
+      graphic: surface.graphic,
+      nav: surface.nav,
+      onNavigate,
     });
 
   // Each research/ask action gets its OWN abort controller and a monotonic run id.
@@ -107,7 +120,7 @@ export function useEditionCopilot(
     researchAbortRef.current = controller;
     abortRef.current?.signal.addEventListener('abort', () => controller.abort(), { once: true });
     const runId = ++researchRunId.current;
-    setSurface({ runId, lines: [], sources: [], answer: '', done: null, chart: null });
+    setSurface({ runId, lines: [], sources: [], answer: '', done: null, graphic: null, nav: null });
     return { signal: controller.signal, isCurrent: () => researchRunId.current === runId };
   };
 
@@ -127,12 +140,12 @@ export function useEditionCopilot(
   const getArticle = (slot: number, index: number): TArticle | undefined =>
     stateRef.current.pages[slot]?.articles[index];
 
-  // A compact, copilot-facing view of an article's chart: the spec + a data summary
+  // A compact, copilot-facing view of an article's graphic: its kind + a data summary
   // (ranges, not raw rows) plus the columns available to switch to — enough to reason
-  // about ("what's the peak?") and reshape ("plot the other series") without flooding
-  // context. No chart → null.
-  const chartReadable = (a: TArticle) =>
-    a.chart && a.table ? { ...summarizeChart(a.chart, a.table), columns: a.table.columns } : null;
+  // about ("what's the peak?") and reshape ("plot the other series", "make it standings")
+  // without flooding context. No graphic → null.
+  const graphicReadable = (a: TArticle) =>
+    a.graphic && a.table ? { ...summarizeGraphic(a.graphic, a.table), columns: a.table.columns } : null;
 
   const runResearch = async (topic: string, isFront: boolean, context?: string) => {
     const { signal, isCurrent } = beginResearchRun();
@@ -186,7 +199,7 @@ export function useEditionCopilot(
               byline: a.byline,
               size: a.size,
               body: a.body,
-              chart: chartReadable(a),
+              graphic: graphicReadable(a),
               sourceCount: a.sources.length,
             })),
           },
@@ -247,113 +260,133 @@ export function useEditionCopilot(
         title: 'Editing article',
         lines: args?.headline ? [`New headline: “${args.headline}”`] : ['Rewriting…'],
         done: status === 'complete' ? 'Updated.' : undefined,
+        nav: status === 'complete' ? navFor(args?.slot) : null,
+        onNavigate,
       }),
   });
 
   // --- Reshape an existing data chart (reads the chart in readable state above) ------
   useCopilotAction({
-    name: 'editChart',
+    name: 'editGraphic',
     description:
-      "Reshape an article's EXISTING data chart in place: switch its type (line/bar/area), " +
-      'change which column is the x-axis (labelColumn), pick which numeric columns are plotted ' +
-      '(valueColumns), set the unit, or filter to a window of rows (lastN most-recent rows, or an ' +
-      'inclusive fromLabel/toLabel range over the label column). Column names must match the chart ' +
-      "data (see each article's chart.columns in the readable state). Only works where chart data " +
-      'exists; if a story has no chart, use refreshChart to research fresh data. Does not touch the article text.',
+      "Reshape an article's EXISTING graphic in place using ONLY the data already in its table: " +
+      'switch its KIND (' + GRAPHIC_KIND_LIST + ') among shapes those SAME numbers support, ' +
+      'change the chart sub-type (line/bar/area), pick the label/category column (labelColumn) and the ' +
+      'numeric columns plotted (valueColumns), set the unit, or filter to a window of rows (lastN ' +
+      'most-recent rows, or an inclusive fromLabel/toLabel range over the label column). Column names ' +
+      "must match the data (see each article's graphic + columns in the readable state). It CANNOT " +
+      "introduce data the table lacks — e.g. it can't turn a score table into a fixtures schedule. To " +
+      'show genuinely NEW data, call askTako then addChart, or use replaceArticleWithResearch. Only works ' +
+      'where a graphic already exists; if a story has none, use addChart or refreshChart. Does not touch the text.',
     parameters: [
       { name: 'slot', type: 'number', description: 'Page slot (0 = front page).', required: true },
       { name: 'index', type: 'number', description: '0-based article index.', required: true },
-      { name: 'type', type: 'string', description: 'Chart type: line, bar, or area.', required: false },
-      { name: 'labelColumn', type: 'string', description: 'Column to use as the x-axis/category (must exist in the data).', required: false },
+      { name: 'kind', type: 'string', description: `Graphic kind to switch to: ${GRAPHIC_KIND_LIST}. Omit to keep the current kind.`, required: false },
+      { name: 'type', type: 'string', description: 'For a chart graphic, the sub-type: line, bar, or area.', required: false },
+      { name: 'labelColumn', type: 'string', description: 'Column to use as the x-axis/category/label (must exist in the data).', required: false },
       { name: 'valueColumns', type: 'string[]', description: 'Numeric columns to plot as series (must exist in the data).', required: false },
       { name: 'unit', type: 'string', description: 'Axis unit, e.g. "$" or "%".', required: false },
       { name: 'lastN', type: 'number', description: 'Keep only the last N rows (e.g. "last 5 years").', required: false },
       { name: 'fromLabel', type: 'string', description: 'Start of an inclusive label-column window (e.g. "2020").', required: false },
       { name: 'toLabel', type: 'string', description: 'End of an inclusive label-column window (e.g. "2025").', required: false },
     ],
-    handler: async ({ slot, index, type, labelColumn, valueColumns, unit, lastN, fromLabel, toLabel }) => {
+    handler: async ({ slot, index, kind, type, labelColumn, valueColumns, unit, lastN, fromLabel, toLabel }) => {
       const current = getArticle(slot, index);
       if (!current) return `No article at (slot ${slot}, index ${index}).`;
-      if (!current.table || !current.chart) {
-        return 'That story has no chart to edit. Use refreshChart to research fresh data for it.';
+      if (!current.table || !current.graphic) {
+        return 'That story has no graphic to edit. Use addChart to draw one, or refreshChart to research fresh data.';
       }
       const ranged =
         lastN || fromLabel || toLabel
           ? sliceTableRows(current.table, { lastN, from: fromLabel, to: toLabel })
           : current.table;
-      const candidate: Partial<TChartSpec> = {
-        type: (type as TChartSpec['type']) ?? current.chart.type,
-        labelColumn: labelColumn ?? current.chart.labelColumn,
-        valueColumns: valueColumns ?? current.chart.valueColumns,
-        unit: unit ?? current.chart.unit,
+      const targetKind = (kind as TGraphicKind | undefined) ?? current.graphic.kind;
+      const hint: GraphicHint = {
+        type: type as GraphicHint['type'],
+        labelColumn,
+        valueColumns,
+        unit,
       };
-      const chart = validateChartSpec(candidate, ranged);
-      if (!chart) return 'Could not build a chart from those columns — check the names against the chart data.';
-      const patch: Partial<TArticle> = { chart, table: ranged };
+      const graphic = buildGraphic(targetKind, ranged, hint);
+      if (!graphic) {
+        return `That kind needs data this story doesn't have (e.g. a schedule needs real dates/fixtures). editGraphic only reshapes the numbers already present — to show genuinely new data, call askTako to fetch it then addChart, or use replaceArticleWithResearch.`;
+      }
+      const patch: Partial<TArticle> = { graphic, table: ranged };
       const result = validateArticlePatch(current, patch);
       if (!result.ok) return result.error;
       dispatch({ type: 'EDIT_ARTICLE', slot, index, patch });
       const what = [
-        type ? `${chart.type}` : null,
-        valueColumns ? `series: ${chart.valueColumns.join(', ')}` : null,
-        labelColumn ? `x: ${chart.labelColumn}` : null,
+        kind ? `${graphic.kind}` : null,
+        type ? `${type}` : null,
+        labelColumn ? `label: ${labelColumn}` : null,
+        valueColumns ? `series: ${valueColumns.join(', ')}` : null,
         lastN || fromLabel || toLabel ? `${ranged.rows.length} rows` : null,
-        unit ? `unit ${chart.unit}` : null,
+        unit ? `unit ${unit}` : null,
       ]
         .filter(Boolean)
         .join(', ');
-      return `Reshaped the chart${what ? ` (${what})` : ''}.`;
+      return `Reshaped the graphic${what ? ` (${what})` : ''}.`;
     },
-    render: ({ status }) =>
+    render: ({ status, args }) =>
       createElement(ResearchProgress, {
-        title: 'Reshaping chart',
+        title: 'Reshaping graphic',
         lines: ['Redrawing…'],
-        done: status === 'complete' ? 'Chart updated.' : undefined,
+        done: status === 'complete' ? 'Graphic updated.' : undefined,
+        nav: status === 'complete' ? navFor(args?.slot) : null,
+        onNavigate,
       }),
   });
 
   useCopilotAction({
     name: 'addChart',
     description:
-      'Draw a NEW data chart on a story from numbers you provide directly — the on-demand way to add a ' +
-      'graphic WITHOUT a full re-research pass. Supply a small REAL data table as JSON; the chart is ' +
-      'inferred from it (or shape it with the optional type/labelColumn/valueColumns/unit). Adds a chart ' +
-      'where a story has none, or replaces an existing one. When you need current figures (standings, ' +
-      'prices, scores), call askTako FIRST to fetch them, then pass those real numbers here — never invent them.',
+      'Draw a NEW graphic on a story from numbers you provide directly — the on-demand way to add a ' +
+      'visual WITHOUT a full re-research pass. Supply a small REAL data table as JSON; the BEST-FITTING ' +
+      'graphic is auto-picked from its shape (a single figure → stat, a league table → standings, ' +
+      'fixtures → schedule, parts-of-a-whole → composition, a time series/comparison → chart). Pass ' +
+      '`kind` to force a specific one. Adds a graphic where a story has none, or replaces an existing ' +
+      'one. When you need current figures (standings, prices, scores), call askTako FIRST to fetch ' +
+      'them, then pass those real numbers here — never invent them.',
     parameters: [
       { name: 'slot', type: 'number', description: 'Page slot (0 = front page).', required: true },
-      { name: 'index', type: 'number', description: '0-based article index to attach the chart to.', required: true },
+      { name: 'index', type: 'number', description: '0-based article index to attach the graphic to.', required: true },
       {
         name: 'table',
         type: 'string',
         description:
-          'The data as JSON: { "caption", "columns" (header names; the FIRST column is the label/category, ' +
-          'the rest hold the numbers), "rows" (array of string-cell arrays) }. Use REAL numbers from askTako ' +
-          'or from the story — at least 2 columns and 3+ rows.',
+          'The data as JSON: { "caption", "columns" (header names; the FIRST column is the label/category/' +
+          'date), "rows" (array of string-cell arrays) }. Use REAL numbers from askTako or from the story. ' +
+          'For standings include the stat columns; for a single figure one row is fine; for a schedule put ' +
+          'the date/time first.',
         required: true,
       },
-      { name: 'type', type: 'string', description: 'Chart type: line, bar, or area. Omit to infer (time series → line/area, categories → bar).', required: false },
-      { name: 'labelColumn', type: 'string', description: 'Column for the x-axis/category. Omit to use the first column.', required: false },
+      { name: 'kind', type: 'string', description: `Force a graphic kind: ${GRAPHIC_KIND_LIST}. Omit to auto-pick from the data shape.`, required: false },
+      { name: 'type', type: 'string', description: 'For a chart graphic, the sub-type: line, bar, or area. Omit to infer.', required: false },
+      { name: 'labelColumn', type: 'string', description: 'Column for the x-axis/category/label. Omit to use the first column.', required: false },
       { name: 'valueColumns', type: 'string[]', description: 'Numeric columns to plot as series. Omit to use every numeric column.', required: false },
       { name: 'unit', type: 'string', description: 'Axis unit, e.g. "$" or "%".', required: false },
     ],
-    handler: async ({ slot, index, table, type, labelColumn, valueColumns, unit }) => {
+    handler: async ({ slot, index, table, kind, type, labelColumn, valueColumns, unit }) => {
       const current = getArticle(slot, index);
       if (!current) return `No article at (slot ${slot}, index ${index}).`;
-      const spec: Partial<TChartSpec> = { type: type as TChartSpec['type'], labelColumn, valueColumns, unit };
-      const built = chartPatchFromJson(table, spec);
+      const hint: GraphicHint = { type: type as GraphicHint['type'], labelColumn, valueColumns, unit };
+      const built = graphicPatchFromJson(table, kind as TGraphicKind | undefined, hint);
       if ('error' in built) return built.error;
-      const patch: Partial<TArticle> = { table: built.table, chart: built.chart };
+      const patch: Partial<TArticle> = { table: built.table, graphic: built.graphic };
       const result = validateArticlePatch(current, patch);
       if (!result.ok) return result.error;
       dispatch({ type: 'EDIT_ARTICLE', slot, index, patch });
-      return `Added a ${built.chart.type} chart (${built.chart.valueColumns.join(', ')} by ${built.chart.labelColumn}) to the "${current.headline}" story.`;
+      return built.graphic
+        ? `Added a ${built.graphic.kind} graphic to the "${current.headline}" story.`
+        : `That data didn't fit a chart shape, so I set it as a table on the "${current.headline}" story.`;
     },
-    render: ({ status }) =>
+    render: ({ status, args }) =>
       createElement(ResearchProgress, {
-        title: 'Drawing chart',
+        title: 'Drawing graphic',
         lines: ['Plotting the data…'],
-        done: status === 'complete' ? 'Chart added.' : undefined,
+        done: status === 'complete' ? 'Graphic added.' : undefined,
+        nav: status === 'complete' ? navFor(args?.slot) : null,
+        onNavigate,
       }),
   });
 
@@ -529,8 +562,12 @@ export function useEditionCopilot(
       if (!v.ok) return v.error;
       if (!hasRealContent(v.page)) return `No fresh reporting found for “${topic}”.`;
       const finalPage = { ...v.page, topic: shortSectionTitle(v.page.topic) };
+      // The reducer inserts at this clamped index; stateRef still holds the pre-insert
+      // pages here (it updates in an effect), so its length is the old section count.
+      const insertAt = Math.max(0, Math.min(position ?? stateRef.current.pages.length, stateRef.current.pages.length));
       dispatch({ type: 'ADD_SECTION', page: finalPage, position });
-      setResearchChart(chartPreviewFor(finalPage.articles.find((a) => a.chart && a.table)));
+      setResearchGraphic(graphicPreviewFor(finalPage.articles.find((a) => a.graphic && a.table)));
+      setResearchNav({ slot: insertAt, label: finalPage.topic });
       setResearchDone(`Added “${finalPage.topic}”.`);
       return `Added a new section: “${finalPage.topic}”.`;
     },
@@ -578,7 +615,8 @@ export function useEditionCopilot(
         // "refresh". The whole section — header, lead and every story — rises in together.
         dispatch({ type: 'REPLACE_PAGE', slot, page: finalPage });
         live.end(run.id, { revealSlot: slot });
-        setResearchChart(chartPreviewFor(finalPage.articles.find((a) => a.chart && a.table)));
+        setResearchGraphic(graphicPreviewFor(finalPage.articles.find((a) => a.graphic && a.table)));
+        setResearchNav({ slot, label: finalPage.topic });
         setResearchDone(`Replaced “${page.topic}” → “${finalPage.topic}”.`);
         return `Replaced the “${page.topic}” section with freshly-researched reporting: “${finalPage.topic}”.`;
       } finally {
@@ -631,13 +669,14 @@ export function useEditionCopilot(
           dek: article.dek,
           body: article.body,
           table: article.table,
-          chart: article.chart,
+          graphic: article.graphic,
           sources: article.sources,
           kicker: article.kicker,
           byline: article.byline,
         });
         dispatch({ type: 'REPLACE_ARTICLE', slot, index, article });
-        setResearchChart(chartPreviewFor(article));
+        setResearchGraphic(graphicPreviewFor(article));
+        setResearchNav(navFor(slot));
         setResearchDone(`Updated the “${article.headline}” story.`);
         return `Replaced that story with freshly-researched reporting: “${article.headline}”.`;
       } finally {
@@ -669,18 +708,19 @@ export function useEditionCopilot(
           .filter(Boolean) as string[],
       );
       const pick =
-        fresh.articles.find((a) => a.chart && a.table && !usedOnPage.has(a.table.caption)) ??
-        fresh.articles.find((a) => a.chart && a.table);
-      if (!pick || !(pick.chart && pick.table)) {
+        fresh.articles.find((a) => a.graphic && a.table && !usedOnPage.has(a.table.caption)) ??
+        fresh.articles.find((a) => a.graphic && a.table);
+      if (!pick || !(pick.graphic && pick.table)) {
         return 'No fresh chart data available for that topic.';
       }
       dispatch({
         type: 'EDIT_ARTICLE',
         slot,
         index,
-        patch: { table: pick.table, chart: pick.chart },
+        patch: { table: pick.table, graphic: pick.graphic },
       });
-      setResearchChart(chartPreviewFor(pick));
+      setResearchGraphic(graphicPreviewFor(pick));
+      setResearchNav(navFor(slot));
       setResearchDone('Refreshed the chart.');
       return 'Refreshed the chart with the latest Tako data.';
     },

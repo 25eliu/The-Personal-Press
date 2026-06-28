@@ -12,4 +12,6 @@ export const TIMEZONE = 'UTC';
 export const MAX_PAGES = 5;        // front page + up to 4 topic pages
 export const MAX_TABLE_ROWS = 50;  // cap rows distilled into a printed table
 
-export const WORD_CAPS = { lead: 180, standard: 110, brief: 60 } as const;
+// Word budgets per article size. Set to fill two newspaper columns without padding; the
+// paginator flows any overflow onto the next leaf, so fuller copy fills the page.
+export const WORD_CAPS = { lead: 200, standard: 130, brief: 70 } as const;

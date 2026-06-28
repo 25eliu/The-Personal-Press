@@ -1,11 +1,12 @@
 import { generateObject, generateText, isStepCount, streamObject } from 'ai';
 import { openai } from '@ai-sdk/openai';
 import { BRAND, MODEL, WORD_CAPS } from '@/lib/config';
-import { Page, type TPage } from '@/lib/schema';
+import { DraftPage, type TArticle, type TDraftPage, type TPage } from '@/lib/schema';
 import { groundingBlock, reporterSystem } from '@/lib/agents/prompts';
 import { buildTakoTools, collectFindings, csvForCard, type Findings } from '@/lib/tako/tools';
 import { csvPreview, csvToTable } from '@/lib/tako/csv-to-table';
-import { validateChartSpec } from '@/lib/newspaper/chartSpec';
+import { pickGraphic } from '@/lib/newspaper/graphic';
+import { cleanTable } from '@/lib/newspaper/tableClean';
 import { normalizeCardSources, normalizeWebResult, validUrl } from '@/lib/tako/normalize';
 import { findingSourceLabels } from '@/lib/tako/sources';
 import { toolDetail, toolLabel } from '@/lib/tako/labels';
@@ -51,17 +52,19 @@ export function sanitizePage(page: TPage): TPage {
 }
 
 /**
- * Attach the DATA every visual is drawn from — React charts only, never a Tako image.
- * Two data sources, in priority order:
+ * Turn a model DRAFT page into a finished app page: attach the DATA every visual is drawn
+ * from — React graphics only, never a Tako image — and route each table to its best-fitting
+ * graphic. Two data sources, in priority order:
  *  1. A card's CSV (`tako_contents`), keyword-matched to the most relevant article (each
  *     CSV card and each article used at most once, strongest overlap first). CSV is
  *     authoritative: it overrides a weaker model-transcribed table.
  *  2. The model's own `table` (numbers it transcribed from the research) for articles no
  *     CSV card matched.
- * Every resulting `table` gets a validated/inferred `chart` spec; an article with neither
- * CSV nor a model table simply has no visual. Pure: returns a new page.
+ * Every resulting `table` is run through pickGraphic (the model's `chart` hint shapes only
+ * the line/bar/area fallback); an article with neither CSV nor a model table has no visual.
+ * Pure: returns a new app page.
  */
-export function attachData(page: TPage, f: Findings): TPage {
+export function finalizePage(page: TDraftPage, f: Findings): TPage {
   // Pool of CSV-bearing cards, deduped by source URL, with keyword sets for matching.
   const pool: { csv: string; title: string; kw: Set<string> }[] = [];
   const seen = new Set<string>();
@@ -96,13 +99,15 @@ export function attachData(page: TPage, f: Findings): TPage {
     usedCard.add(pi);
   }
 
-  const articles = page.articles.map((a, ai) => {
-    const table = tableFor.get(ai) ?? a.table; // CSV authoritative, else the model's table
-    const chart = table ? validateChartSpec(a.chart, table) : undefined;
-    if (!table) return a.chart ? { ...a, chart: undefined } : a;
-    return { ...a, table, chart };
+  const articles: TArticle[] = page.articles.map((a, ai) => {
+    const raw = tableFor.get(ai) ?? a.table; // CSV authoritative, else the model's table
+    const { chart, ...rest } = a; // drop the draft-only chart hint; build a graphic instead
+    if (!raw) return { ...rest, table: undefined, graphic: undefined };
+    const table = cleanTable(raw); // pivot melted data + drop noise columns BEFORE routing
+    const graphic = pickGraphic(table, chart); // chart hint shapes only the line/bar/area fallback
+    return { ...rest, table, graphic };
   });
-  return { ...page, articles };
+  return sanitizePage({ topic: page.topic, articles });
 }
 
 /** Headline used by the degraded fallback page; also the marker for "no content". */
@@ -137,8 +142,8 @@ export function distillPrompt(
   context?: string,
 ): string {
   const layout = isFront
-    ? 'This is the FRONT PAGE: produce exactly one "lead" article plus 2 or 3 "brief" articles.'
-    : 'This is a TOPIC PAGE: produce 2 to 4 articles sized "standard" or "brief" (at most one "lead").';
+    ? 'This is the FRONT PAGE: produce one "lead" article plus 3 "brief" articles (a full front).'
+    : 'This is a TOPIC PAGE: produce 3 to 4 articles sized "standard" or "brief" (at most one "lead").';
   return `Today is ${today.dateLine}. Topic: "${topic}"
 ${layout}${groundingBlock(context)}
 
@@ -147,7 +152,9 @@ about the SAME story, leading each article with the number/finding. Prefer the m
 if you must use older data, work an "as of <date>" into the kicker or dek. Every article MUST include
 at least one source drawn from this research. Do not invent facts, sources, or dates. Respect word
 caps (lead <= ${WORD_CAPS.lead}, standard <= ${WORD_CAPS.standard}, brief <= ${WORD_CAPS.brief}).
-If the research is thin, write fewer, shorter articles rather than padding.
+Aim NEAR the cap for each article — a printed page has two full columns to fill, so write the
+story out properly (context, the numbers, what they mean) rather than a thin stub. Only write
+fewer/shorter articles when the research genuinely has no more material; never pad with fluff.
 
 VISUALS ARE REACT CHARTS DRAWN FROM A "table" — there are NO images. Any article built on
 numeric data MUST carry a "table" AND a "chart" so it can be drawn:
@@ -158,8 +165,12 @@ numeric data MUST carry a "table" AND a "chart" so it can be drawn:
 - "chart": { "type" (line/bar/area), "labelColumn" (x-axis/category column), "valueColumns"
   (one or more numeric series), optional "unit" "$"/"%" } — naming columns EXACTLY as they
   appear in the table header. (If you give a table but an unsure/blank chart, one is inferred.)
-Prefer a time series → line/area; a category comparison → bar. Give as many stories a chart as
-the data honestly supports.
+Prefer a time series → line/area; a category comparison → bar. The chart hint is only a
+fallback: the page auto-picks the best graphic from the table's shape (a single figure renders
+as a stat, a ranked league table as standings, parts-of-a-whole as a share bar). For SCHEDULE or
+fixtures data (upcoming matches, an events/earnings calendar), put a date/time FIRST column and
+title/detail columns — it renders as a schedule. Give as many stories a graphic as the data
+honestly supports.
 
 RESEARCH (JSON):
 ${ctx}`;
@@ -215,11 +226,11 @@ export async function runReporter(
 
     const research = findingsContext(findings);
     logCall('distill.start', { topic, model: MODEL, stream: Boolean(onDraftToken) });
-    let object: TPage;
+    let object: TDraftPage;
     if (onDraftToken) {
       const result = streamObject({
         model: openai(MODEL),
-        schema: Page,
+        schema: DraftPage,
         prompt: distillPrompt(topic, isFront, research, today, context),
         providerOptions: { openai: { strictJsonSchema: false } },
         abortSignal: signal,
@@ -237,7 +248,7 @@ export async function runReporter(
     } else {
       const r = await generateObject({
         model: openai(MODEL),
-        schema: Page,
+        schema: DraftPage,
         prompt: distillPrompt(topic, isFront, research, today, context),
         providerOptions: { openai: { strictJsonSchema: false } },
         maxRetries: 3,
@@ -246,7 +257,7 @@ export async function runReporter(
       object = r.object;
     }
     logCall('distill.done', { topic, articles: object.articles.length });
-    return attachData(sanitizePage({ ...object, topic }), findings);
+    return finalizePage({ ...object, topic }, findings);
   } catch (err) {
     logCall('error', { scope: 'reporter', topic, message: err instanceof Error ? err.message : String(err) });
     return emptyPage(topic);

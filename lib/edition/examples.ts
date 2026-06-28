@@ -1,24 +1,21 @@
 /** A guaranteed suggested brief, always shown first on the home screen. */
-export const PINNED_BRIEF = 'fifa, developer news, stocks';
+export const PINNED_BRIEF = 'world news, business, technology';
 
 /** Curated pool of suggested briefs. Three are surfaced on the home screen each day
  *  (see getDailyBriefs), rotating deterministically so the lineup feels fresh without
  *  ever losing the instant-replay cache — any pooled brief still counts as an example.
- *  Each brief is several topics separated by commas. */
+ *  Each brief is several BROAD news beats separated by commas (not specific entities), so
+ *  Tako always has data to chart and every section reads as a real newspaper desk. */
 export const EXAMPLE_POOL = [
   PINNED_BRIEF,
-  'AI startups, the Fed, the Premier League',
-  'crypto markets, SpaceX, the NBA playoffs',
-  'climate policy, oil prices, the World Cup',
-  'chip wars, interest rates, Formula 1',
-  'housing markets, OpenAI, the Champions League',
-  'gold, the dollar, Grand Slam tennis',
-  'electric vehicles, inflation, the Summer Olympics',
-  'biotech breakthroughs, Tesla, college football',
-  'commercial space, bond yields, the Tour de France',
-  'semiconductors, the jobs report, the Ryder Cup',
-  'AI regulation, emerging markets, the Cricket World Cup',
-  'renewable energy, the yen, the MLB pennant race',
+  'world news, business, sports',
+  'technology, markets, science',
+  'politics, health, culture',
+  'the economy, climate, global sport',
+  'finance, world affairs, entertainment',
+  'energy, geopolitics, space',
+  'markets, technology, sports',
+  'business, science, world news',
 ] as const;
 
 /** Back-compat alias for membership checks; prefer getDailyBriefs() for what to show. */

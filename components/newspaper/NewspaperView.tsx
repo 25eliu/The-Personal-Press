@@ -96,7 +96,7 @@ function PageSheet({ page, slot, topic, meta, building, mode, cursor }: {
   );
 }
 
-export function NewspaperView({ plan, pages, meta, building, bw, generationDone, onFinished }: {
+export function NewspaperView({ plan, pages, meta, building, bw, generationDone, onFinished, flipTo }: {
   plan: SectionPlanItem[];
   pages: (TPage | null)[];
   meta: Meta;
@@ -104,6 +104,8 @@ export function NewspaperView({ plan, pages, meta, building, bw, generationDone,
   bw: boolean;
   generationDone: boolean;
   onFinished: () => void;
+  /** Click-to-flip target from the Copy Desk; forwarded to the reader. */
+  flipTo?: { slot: number; nonce: number } | null;
 }) {
   const slots = useMemo(
     () => (plan.length > 0 ? plan.map((p) => p.slot) : pages.map((_, i) => i)),
@@ -169,7 +171,7 @@ export function NewspaperView({ plan, pages, meta, building, bw, generationDone,
   // below stays as-is (streaming skeletons), since pages arrive one at a time.
   if (!building) {
     const finished = pages.filter((p): p is TPage => Boolean(p));
-    if (finished.length > 0) return <PaginatedReader pages={finished} meta={meta} bw={bw} />;
+    if (finished.length > 0) return <PaginatedReader pages={finished} meta={meta} bw={bw} flipTo={flipTo} />;
   }
 
   // Before the editor returns a plan there are no slots yet — show a clear

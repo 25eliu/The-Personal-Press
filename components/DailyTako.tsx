@@ -50,6 +50,10 @@ export function DailyTako() {
   // Derived `deskOpen` below: open while reading unless the reader closed it.
   // Kept as an override (not a synced effect) so no setState-in-effect is needed.
   const [deskToggle, setDeskToggle] = useState<boolean | null>(null);
+  // Click-to-flip: a chat result's jump link bumps this; the reader flips to `slot`. The
+  // nonce makes repeated jumps to the same section re-fire the reader's effect.
+  const [flipTo, setFlipTo] = useState<{ slot: number; nonce: number } | null>(null);
+  const requestFlip = (slot: number) => setFlipTo((f) => ({ slot, nonce: (f?.nonce ?? 0) + 1 }));
 
   const building = phase === 'typesetting' || phase === 'printing';
   // The desk is only present while reading; it auto-opens (defaultOpen) unless the
@@ -243,6 +247,7 @@ export function DailyTako() {
             bw={bw}
             generationDone={phase === 'printing'}
             onFinished={() => setPhase('reading')}
+            flipTo={flipTo}
           />
           {/* Editing only once the paper has finished printing, so edits can't race
               the generation stream's dispatches into the same reducer. */}
@@ -252,6 +257,7 @@ export function DailyTako() {
             abortRef={abortRef}
             showSidebar={phase === 'reading'}
             onOpenChange={setDeskToggle}
+            onNavigate={requestFlip}
           />
         </CopilotKit>
         </LiveEditProvider>

@@ -44,14 +44,17 @@ export function CopilotBridge({
   abortRef,
   showSidebar,
   onOpenChange,
+  onNavigate,
 }: {
   edition: EditionState;
   dispatch: Dispatch<EditionAction>;
   abortRef: RefObject<AbortController | null>;
   showSidebar: boolean;
   onOpenChange?: (open: boolean) => void;
+  /** Flip the reader to a section when a chat result's jump link is clicked. */
+  onNavigate?: (slot: number) => void;
 }) {
-  useEditionCopilot(edition, dispatch, abortRef);
+  useEditionCopilot(edition, dispatch, abortRef, onNavigate);
   // The sidebar mounts only once the paper has finished printing (showSidebar =
   // phase 'reading'), so defaultOpen makes it slide in exactly when the edition is
   // ready — no separate timer needed. The mount itself IS the "done loading" signal.

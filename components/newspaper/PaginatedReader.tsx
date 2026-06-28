@@ -138,7 +138,7 @@ function FlipLeaf({
  * viewport, turn pages with a real double-sided flip, and let the Copy Desk dock to
  * the paper's edge via the published --news-* geometry vars.
  */
-export function PaginatedReader({ pages, meta, bw }: { pages: TPage[]; meta: Meta; bw: boolean }) {
+export function PaginatedReader({ pages, meta, bw, flipTo }: { pages: TPage[]; meta: Meta; bw: boolean; flipTo?: { slot: number; nonce: number } | null }) {
   const { leaves, measurer } = usePagination(pages, meta);
   const live = useLiveEdit();
 
@@ -233,6 +233,19 @@ export function PaginatedReader({ pages, meta, bw }: { pages: TPage[]; meta: Met
     // go() closes over cur/flip/editing/spreadCount — re-bind when those change.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [cur, spreadCount, flip, editing]);
+
+  // Click-to-flip: when a Copy Desk result's "↳ See it in …" link fires, jump the reader to
+  // that section's spread (mapping slot → spread via `topics`). The nonce gates each request
+  // so the same target can be re-triggered; we never yank the reader out of a live edit.
+  const lastFlip = useRef(0);
+  useEffect(() => {
+    if (!flipTo || flipTo.nonce === lastFlip.current) return;
+    lastFlip.current = flipTo.nonce;
+    if (editing) return;
+    const target = topics.find((t) => t.topicIndex === flipTo.slot)?.spread;
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    if (target != null) setSpread(target);
+  }, [flipTo, topics, editing]);
 
   const portrait = cw < 720;
   const spreadW = (portrait ? LEAF_W : LEAF_W * 2 + SPINE_W) + 44;

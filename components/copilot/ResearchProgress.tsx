@@ -3,13 +3,13 @@ import { useEffect, useRef, useState } from 'react';
 import {
   initResearchView,
   reduceResearchView,
-  type ChartPreview,
+  type GraphicPreview,
   type ResearchStatus,
   type Snapshot,
 } from '@/lib/edition/researchView';
-import { NewsChart } from '@/components/newspaper/NewsChart';
+import { GraphicView } from '@/components/newspaper/GraphicView';
 
-const EMPTY: Snapshot = { lines: [], sources: [], answer: '', done: '', chart: null };
+const EMPTY: Snapshot = { lines: [], sources: [], answer: '', done: '', graphic: null, nav: null };
 
 /**
  * Live research surface inside a copilot chat bubble while a Tako-backed action runs
@@ -37,7 +37,9 @@ export function ResearchProgress({
   sources = [],
   answer = '',
   done,
-  chart = null,
+  graphic = null,
+  nav = null,
+  onNavigate,
   runId,
   status,
   surfaceDone,
@@ -48,7 +50,11 @@ export function ResearchProgress({
   sources?: string[];
   answer?: string;
   done?: string | null;
-  chart?: ChartPreview | null;
+  graphic?: GraphicPreview | null;
+  /** The section this bubble changed (slot + printed label) — renders a jump link. */
+  nav?: { slot: number; label: string } | null;
+  /** Flip the reader to a section. Wired from DailyTako through the copilot. */
+  onNavigate?: (slot: number) => void;
   runId?: number;
   status?: ResearchStatus;
   surfaceDone?: boolean;
@@ -72,16 +78,16 @@ export function ResearchProgress({
   if (!ownership) {
     complete = Boolean(done);
     if (complete && frozenLegacy === null) {
-      setFrozenLegacy({ lines, sources, answer, done: '', chart });
+      setFrozenLegacy({ lines, sources, answer, done: '', graphic, nav });
     }
-    view = frozenLegacy ?? { lines, sources, answer, done: '', chart };
+    view = frozenLegacy ?? { lines, sources, answer, done: '', graphic, nav };
     doneLine = typeof done === 'string' && done ? done : undefined;
   } else {
     complete = status === 'complete';
     const { next, display, claim } = reduceResearchView(viewRef.current, {
       runId,
       status,
-      live: { lines, sources, answer, done: typeof done === 'string' ? done : '', chart },
+      live: { lines, sources, answer, done: typeof done === 'string' ? done : '', graphic, nav },
       complete,
       surfaceDone: Boolean(surfaceDone),
       alreadyClaimed: claimed.has(runId),
@@ -123,14 +129,14 @@ export function ResearchProgress({
         </p>
       )}
 
-      {/* The interactive chart this run produced — the SAME NewsChart that lands in the
-          paper, mirrored here so generation/revamp shows its figure as it commits. */}
-      {view.chart && (
+      {/* The graphic this run produced — the SAME component that lands in the paper,
+          mirrored here so generation/revamp shows its figure as it commits. */}
+      {view.graphic && (
         <div className="mb-2 overflow-x-auto">
-          <NewsChart
-            chart={view.chart.chart}
-            table={view.chart.table}
-            caption={view.chart.caption}
+          <GraphicView
+            graphic={view.graphic.graphic}
+            table={view.graphic.table}
+            caption={view.graphic.caption}
             width={232}
             height={150}
           />
@@ -168,6 +174,18 @@ export function ResearchProgress({
       )}
 
       {doneLine && <p className="mt-1.5 font-bold text-[var(--accent)]">{doneLine}</p>}
+
+      {/* Jump link — flip the reader to the section this bubble changed. Shows only once the
+          run is complete and a navigation handler is wired. */}
+      {complete && view.nav && onNavigate && (
+        <button
+          type="button"
+          onClick={() => onNavigate(view.nav!.slot)}
+          className="mt-1.5 inline-flex items-center gap-1 text-[11px] font-bold text-[var(--ink)]/70 underline-offset-2 transition-colors hover:text-[var(--accent)] hover:underline"
+        >
+          ↳ See it in “{view.nav.label}”
+        </button>
+      )}
     </div>
   );
 }

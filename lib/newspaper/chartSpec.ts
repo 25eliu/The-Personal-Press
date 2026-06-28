@@ -1,47 +1,16 @@
 import { TableData, type TChartSpec, type TTableData } from '@/lib/schema';
+import {
+  colValues,
+  detectUnit,
+  isNumericColumn,
+  looksLikeDates,
+  parseNumeric,
+} from '@/lib/newspaper/tableShape';
+
+// Re-export the detectors so existing importers of chartSpec keep working.
+export { parseNumeric } from '@/lib/newspaper/tableShape';
 
 const CHART_TYPES: TChartSpec['type'][] = ['line', 'bar', 'area'];
-
-/** Parse a table cell to a number, tolerating $, %, commas, leading + and whitespace. */
-export function parseNumeric(cell: string | undefined): number | null {
-  if (cell == null) return null;
-  const cleaned = cell.replace(/[$,%\s]/g, '').replace(/^\+/, '');
-  if (cleaned === '') return null;
-  const n = Number(cleaned);
-  return Number.isFinite(n) ? n : null;
-}
-
-const colValues = (table: TTableData, col: string): string[] => {
-  const i = table.columns.indexOf(col);
-  return i < 0 ? [] : table.rows.map((r) => r[i] ?? '');
-};
-
-/** A column is numeric if most of its cells parse as numbers. */
-function isNumericColumn(table: TTableData, col: string): boolean {
-  const vals = colValues(table, col);
-  if (vals.length === 0) return false;
-  const hits = vals.filter((v) => parseNumeric(v) !== null).length;
-  return hits >= Math.max(1, Math.ceil(vals.length * 0.6));
-}
-
-/** Years, quarters, ISO-ish dates, or month names dominate → treat as a time axis. */
-function looksLikeDates(vals: string[]): boolean {
-  if (vals.length === 0) return false;
-  const re = /^(\d{4}|Q[1-4]|\d{1,2}[/-]\d{1,2}([/-]\d{2,4})?|\d{4}[/-]\d{1,2}|jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)/i;
-  const hits = vals.filter((v) => re.test(v.trim())).length;
-  return hits >= Math.ceil(vals.length * 0.6);
-}
-
-/** Pick a shared unit ($/%) if most value cells carry one, else none. */
-function detectUnit(table: TTableData, valueColumns: string[]): string | undefined {
-  const cells = valueColumns.flatMap((c) => colValues(table, c)).filter((v) => v.trim() !== '');
-  if (cells.length === 0) return undefined;
-  const pct = cells.filter((v) => v.includes('%')).length;
-  const usd = cells.filter((v) => v.includes('$')).length;
-  if (pct >= Math.ceil(cells.length * 0.6)) return '%';
-  if (usd >= Math.ceil(cells.length * 0.6)) return '$';
-  return undefined;
-}
 
 /**
  * Infer a sensible chart from raw table data when the model named none (or named a bad

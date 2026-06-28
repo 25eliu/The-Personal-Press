@@ -1,8 +1,8 @@
 import { expect, test } from 'vitest';
-import { attachData, distillPrompt, emptyPage, findingsContext, researchPrompt, sanitizePage } from '@/lib/agents/reporter';
+import { distillPrompt, emptyPage, finalizePage, findingsContext, researchPrompt, sanitizePage } from '@/lib/agents/reporter';
 import { todayContext } from '@/lib/time/clock';
 import type { Findings } from '@/lib/tako/tools';
-import type { TPage } from '@/lib/schema';
+import type { TDraftPage } from '@/lib/schema';
 
 const findings: Findings = {
   cards: [{
@@ -28,33 +28,36 @@ const cardWithCsv = (title: string, slug: string, csv: string): { card: any; con
   content: { source_url: `https://trytako.com/c/${slug}`, format: 'csv', cost: 0, data: csv },
 });
 
-test('attachData turns a card CSV into a table + inferred chart on the matched article', () => {
+test('finalizePage turns a card CSV into a table + routed graphic on the matched article', () => {
   const { card, content } = cardWithCsv('US Federal Funds Rate', 'ffr', 'Year,Rate\n2023,5.3\n2024,4.6\n2025,3.6');
-  const page: TPage = { topic: 'The Fed', articles: [article('Federal Funds Rate path', 'Rates')] };
-  const out = attachData(page, { cards: [card], web: [], contents: [content] });
+  const page: TDraftPage = { topic: 'The Fed', articles: [article('Federal Funds Rate path', 'Rates')] };
+  const out = finalizePage(page, { cards: [card], web: [], contents: [content] });
   const a = out.articles[0];
   expect(a.table?.columns).toEqual(['Year', 'Rate']);
-  expect(a.chart?.labelColumn).toBe('Year');
-  expect(a.chart?.valueColumns).toEqual(['Rate']);
-  expect((a as any).chartImageUrl).toBeUndefined(); // never an image
-  expect(page.articles[0].chart).toBeUndefined();   // immutability
+  expect(a.graphic?.kind).toBe('chart'); // dated label → a line/area chart
+  if (a.graphic?.kind === 'chart') {
+    expect(a.graphic.labelColumn).toBe('Year');
+    expect(a.graphic.valueColumns).toEqual(['Rate']);
+  }
+  expect((a as any).chartImageUrl).toBeUndefined();  // never an image
+  expect((page.articles[0] as any).graphic).toBeUndefined(); // immutability: draft is untouched
 });
 
-test('attachData keeps a model-transcribed table when no CSV card matches', () => {
-  const page: TPage = { topic: 'X', articles: [
+test('finalizePage keeps a model-transcribed table when no CSV card matches', () => {
+  const page: TDraftPage = { topic: 'X', articles: [
     { ...article('Prices rose', 'Econ'), table: { caption: 'Prices', columns: ['Q', 'P'], rows: [['Q1', '10'], ['Q2', '12']] } },
   ] };
-  const out = attachData(page, { cards: [], web: [], contents: [] });
+  const out = finalizePage(page, { cards: [], web: [], contents: [] });
   expect(out.articles[0].table?.columns).toEqual(['Q', 'P']);
-  expect(out.articles[0].chart?.valueColumns).toEqual(['P']); // chart inferred from the model table
+  expect(out.articles[0].graphic?.kind).toBe('chart'); // a graphic is routed from the model table
 });
 
-test('attachData drops a chart spec when there is no table data at all', () => {
-  const page: TPage = { topic: 'X', articles: [
+test('finalizePage leaves no graphic when there is no table data at all', () => {
+  const page: TDraftPage = { topic: 'X', articles: [
     { ...article('No data here', 'X'), chart: { type: 'bar', labelColumn: 'A', valueColumns: ['B'] } },
   ] };
-  const out = attachData(page, { cards: [], web: [], contents: [] });
-  expect(out.articles[0].chart).toBeUndefined();
+  const out = finalizePage(page, { cards: [], web: [], contents: [] });
+  expect(out.articles[0].graphic).toBeUndefined();
   expect(out.articles[0].table).toBeUndefined();
 });
 

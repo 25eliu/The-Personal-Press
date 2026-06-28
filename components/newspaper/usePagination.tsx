@@ -23,12 +23,15 @@ export function usePagination(pages: TPage[], meta: Meta): { leaves: Leaf[]; mea
 
   const blocks = useMemo<Block[]>(() => pages.flatMap((p, i) => flattenTopic(p, i)), [pages]);
 
-  // A cheap content fingerprint: re-measure only when the words/shapes change, not
-  // on every render (and never on zoom, which doesn't affect px heights).
+  // A cheap content fingerprint: re-measure only when the words/shapes/data change, not
+  // on every render (and never on zoom, which doesn't affect px heights). The graphic and
+  // table are serialized in FULL — fingerprinting a graphic by `kind` alone froze the paper
+  // on any same-kind reshape (new series, sub-type, windowed rows) or data swap, so the
+  // Copy Desk's edit committed to state but never repainted the leaf.
   const signature = useMemo(
     () =>
       JSON.stringify(
-        pages.map((p) => [p.topic, p.articles.map((a) => [a.size, a.headline, a.dek ?? '', a.body.length, !!a.table, !!a.chart])]),
+        pages.map((p) => [p.topic, p.articles.map((a) => [a.size, a.headline, a.dek ?? '', a.body.length, a.table ?? null, a.graphic ?? null])]),
       ) + `|${meta.masthead}|${meta.tagline}|${meta.edition}|${meta.dateLine}`,
     [pages, meta],
   );

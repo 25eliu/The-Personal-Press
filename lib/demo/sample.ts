@@ -36,7 +36,7 @@ const SAMPLE: TNewspaper = {
               ['Fri', '5302'],
             ],
           },
-          chart: { type: 'area', labelColumn: 'Date', valueColumns: ['S&P 500'] },
+          graphic: { kind: 'chart', type: 'area', labelColumn: 'Date', valueColumns: ['S&P 500'] },
           sources: [
             { name: 'Federal Reserve Bank of St. Louis', url: 'https://fred.stlouisfed.org/' },
             { name: 'Reuters', url: 'https://www.reuters.com/' },
@@ -82,7 +82,7 @@ const SAMPLE: TNewspaper = {
               ['May', '4.6'],
             ],
           },
-          chart: { type: 'line', labelColumn: 'Month', valueColumns: ['Rate'], unit: '%' },
+          graphic: { kind: 'chart', type: 'line', labelColumn: 'Month', valueColumns: ['Rate'], unit: '%' },
           sources: [{ name: 'Federal Reserve', url: 'https://www.federalreserve.gov/' }],
         },
         {
@@ -106,6 +106,17 @@ const SAMPLE: TNewspaper = {
           body:
             'A weekend of upsets reshuffled the table, cutting the lead at the summit to a single point ' +
             'with a handful of fixtures left to play.',
+          table: {
+            caption: 'Premier League — top of the table',
+            columns: ['Club', 'P', 'GD', 'Pts'],
+            rows: [
+              ['Arsenal', '36', '+48', '83'],
+              ['Liverpool', '36', '+45', '82'],
+              ['Manchester City', '36', '+50', '82'],
+              ['Aston Villa', '36', '+19', '68'],
+            ],
+          },
+          graphic: { kind: 'standings', entityColumn: 'Club', statColumns: ['P', 'GD', 'Pts'] },
           sources: [{ name: 'Premier League', url: 'https://www.premierleague.com/' }],
         },
         {

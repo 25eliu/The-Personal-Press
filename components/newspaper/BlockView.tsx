@@ -12,7 +12,7 @@ import {
   liveEraseFrac,
 } from '@/lib/edition/liveEdit';
 import { DataTable } from './DataTable';
-import { NewsChart } from './NewsChart';
+import { GraphicView } from './GraphicView';
 import { SourceCredit } from './SourceCredit';
 
 // Column-tuned headline sizes — smaller than the front-page treatment so a lead
@@ -144,21 +144,21 @@ export function BlockView({ block }: { block: Block }) {
     return null;
   }
 
-  // STRUCTURAL (chart / table / sources) — only when the WHOLE article is being swapped.
+  // STRUCTURAL (graphic / table / sources) — only when the WHOLE article is being swapped.
   // They clear with the text during erase/wait, then reload the NEW content from live
   // state during typing, gated to their reading-order spot so they load in rather than
   // pop at commit. Body-only edits (live.whole === false) skip this and render statically
-  // below, leaving the chart/sources untouched. Only blocks that already exist in this
-  // article's shred animate; a chart added to a story that had none appears at the commit.
-  if (liveTarget && live.whole && (kind === 'chart' || kind === 'table' || kind === 'sources')) {
+  // below, leaving the graphic/sources untouched. Only blocks that already exist in this
+  // article's shred animate; a graphic added to a story that had none appears at the commit.
+  if (liveTarget && live.whole && (kind === 'graphic' || kind === 'table' || kind === 'sources')) {
     if (live.phase === 'erasing' || live.phase === 'waiting') return null;
-    if (kind === 'chart') {
-      // The interactive chart sits just below the head; reload it from live state once the
+    if (kind === 'graphic') {
+      // The graphic sits just below the head; reload it from live state once the
       // headline+dek are in so it rises with the new copy.
-      if (!live.chart || !live.table || !liveHeadDone(live)) return null;
+      if (!live.graphic || !live.table || !liveHeadDone(live)) return null;
       return (
         <div className="live-edit-rise">
-          <NewsChart chart={live.chart} table={live.table} caption={live.headline} />
+          <GraphicView graphic={live.graphic} table={live.table} caption={live.headline} />
         </div>
       );
     }
@@ -190,8 +190,8 @@ export function BlockView({ block }: { block: Block }) {
     );
   }
 
-  if (kind === 'chart' && article.chart && article.table) {
-    return <NewsChart chart={article.chart} table={article.table} caption={article.headline} />;
+  if (kind === 'graphic' && article.graphic && article.table) {
+    return <GraphicView graphic={article.graphic} table={article.table} caption={article.headline} />;
   }
 
   if (kind === 'para') {

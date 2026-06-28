@@ -27,9 +27,11 @@ const categorical: TTableData = {
   rows: [['North', '$4.2'], ['South', '$3.1'], ['West', '$5.0']],
 };
 
-test('parseNumeric tolerates currency, percent, commas and leading +', () => {
+test('parseNumeric tolerates currency, percent, commas, leading + and comparators', () => {
   expect(parseNumeric('$1,234.5')).toBe(1234.5);
   expect(parseNumeric('+2%')).toBe(2);
+  expect(parseNumeric('<0.01')).toBe(0.01); // odds/probability cells stay numeric
+  expect(parseNumeric('~3%')).toBe(3);
   expect(parseNumeric('n/a')).toBeNull();
   expect(parseNumeric(undefined)).toBeNull();
 });
