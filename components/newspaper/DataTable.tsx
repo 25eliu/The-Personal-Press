@@ -1,14 +1,14 @@
 import type { TTableData } from '@/lib/schema';
 import { colValues, detectColumnUnit, isNumericColumn, looksLikeDates } from '@/lib/newspaper/tableShape';
 import { formatCell, formatLabel, shortLabel } from '@/lib/newspaper/format';
+import { capRows } from '@/lib/newspaper/graphicModal';
 
 // The plain-table fallback must stay readable, never a 30-row monster: cap rows and let cells
-// truncate so columns never overlap.
+// truncate so columns never overlap. The modal overrides `maxRows` with Infinity to show every row.
 const MAX_ROWS = 8;
 
-export function DataTable({ table }: { table: TTableData }) {
-  const rows = table.rows.slice(0, MAX_ROWS);
-  const extra = table.rows.length - rows.length;
+export function DataTable({ table, maxRows = MAX_ROWS }: { table: TTableData; maxRows?: number }) {
+  const { shown: rows, extra } = capRows(table.rows, maxRows);
   // Decide each column's rendering once: numeric cells get rounded/abbreviated + their unit,
   // date columns collapse ISO timestamps, everything else prints as-is.
   const col = table.columns.map((c) => ({
