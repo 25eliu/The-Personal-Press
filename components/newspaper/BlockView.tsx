@@ -158,7 +158,7 @@ export function BlockView({ block }: { block: Block }) {
       if (!live.graphic || !live.table || !liveHeadDone(live)) return null;
       return (
         <div className="live-edit-rise">
-          <GraphicView graphic={live.graphic} table={live.table} caption={live.headline} />
+          <GraphicView graphic={live.graphic} table={live.table} caption={live.headline} expandable />
         </div>
       );
     }
@@ -191,7 +191,7 @@ export function BlockView({ block }: { block: Block }) {
   }
 
   if (kind === 'graphic' && article.graphic && article.table) {
-    return <GraphicView graphic={article.graphic} table={article.table} caption={article.headline} />;
+    return <GraphicView graphic={article.graphic} table={article.table} caption={article.headline} expandable />;
   }
 
   if (kind === 'para') {
