@@ -1,24 +1,26 @@
-# The Daily Tako — Short Demo Script
+# The Daily Tako — Demo Script
 
-*The frame: **CopilotKit is the hands, Tako is the eyes.** CopilotKit runs the chat and turns my words into real edits; Tako supplies the live facts and the raw numbers behind every chart.*
-
----
-
-**1. Open the Copy Desk.**
-"This chat panel is **CopilotKit**. The whole app is wrapped in `<CopilotKit>`, the panel is `<CopilotSidebar>`, and it talks to a `CopilotRuntime` + `OpenAIAdapter` backend at `/api/copilotkit`. Why CopilotKit? It gives us a chat that can actually *do things* in the app, not just talk."
-
-**2. "Notice it already knows what's on the page."**
-"I never tell it which story I mean. We hand it the whole edition with `useCopilotReadable`, addressed by page and article — that's how it targets edits precisely."
-
-**3. Rewrite a story — "tighten the lead and sharpen the headline."**
-"That's a CopilotKit frontend action, `useCopilotAction` (`editArticle`). The handler runs in the browser against our state, so it applies instantly. No live data needed — pure rewrite."
-
-**4. Ask a live question — "what's the latest US GDP figure?"**
-"Here's why **Tako** exists. CopilotKit alone only knows the model's training data — it can't know today's number. So the `askTako` action calls Tako: `tako_search` for live data and web, `tako_contents` for the raw figures, both from `@takoviz/ai-sdk`. The answer streams in with real citations. Tako makes it *true and current*."
-
-**5. Add a researched section with a chart.**
-"This is the combo. `addSection` (CopilotKit) opens the section; Tako researches it live. The chart appears right in the chat — that's the action's `render` prop mounting our real chart component. And because `tako_contents` returns raw numbers, not a picture, I can then reshape it: `editChart` to switch type or filter the range. That editable chart is the proof the data is real."
+*Plain text = what you say. Italics = what you do.*
 
 ---
 
-**Why both, in one line:** CopilotKit decides *what to do* (chat → `useCopilotAction` edits, `useCopilotReadable` context); Tako supplies *what's true* (`tako_search` + `tako_contents` → live facts and chartable numbers). Interface vs. ground truth.
+**Open.**
+"Generative UI lets agents build delightful interfaces on the fly — but they're only as good as the data behind them. Tako's new **Contents API** fixes that: real-time, structured data from trusted sources, in a shape that's perfect for generative UI. So I built a personalized newspaper with CopilotKit, Vercel, and Tako Contents."
+
+*Type a topic; let it generate.*
+"I just gave it a topic, and it pulled live data and laid out a whole paper around it — articles and real charts from real numbers."
+
+**How it works (10 seconds).**
+"Three pieces. **Vercel's AI SDK** runs the agent. **Tako Contents** feeds it the facts — `tako_search` for live data, `tako_contents` for the raw numbers behind every chart. And **CopilotKit** is the chat: it doesn't ship the charts — I built those — it grounds the agent in the page (`useCopilotReadable`), turns what I say into real edits (`useCopilotAction`), and renders my components right in the chat. The agent picks the UI and binds Tako's data into it."
+
+*Add a section — "Add a section on the FIFA World Cup standings."*
+"I just ask. That's CopilotKit calling `addSection`, going back to Tako live — you can see the sources stream in, the chart appears right in the chat, then the section drops into the paper."
+
+*Reshape a chart — "Make that bar chart a line graph."*
+"Instant — no new lookup. The chart already has its numbers, so it just redraws. That's the win of real data over a static image."
+
+*Replace a section — "Replace this section, make it about the housing market."*
+"The whole section erases, the agent re-researches with Tako, and it rebuilds in place — sourced and fresh. I never wrote a word of it."
+
+**Close.**
+"CopilotKit is the hands, Tako is the eyes — a newspaper you can talk into existence and reshape on the fly. Thanks!"

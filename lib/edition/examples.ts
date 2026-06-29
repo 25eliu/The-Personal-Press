@@ -21,6 +21,13 @@ export const EXAMPLE_POOL = [
 /** Back-compat alias for membership checks; prefer getDailyBriefs() for what to show. */
 export const EXAMPLE_BRIEFS = EXAMPLE_POOL;
 
+/**
+ * The fixed home-screen lineup — the SAME prompts on every visit (pinned brief first), with no
+ * daily rotation or live wire. A stable lineup is what lets each example's generated edition stay
+ * cached and replay instantly on a later run (the cache is keyed by the brief text).
+ */
+export const HOME_BRIEFS: readonly string[] = EXAMPLE_POOL.slice(0, 4);
+
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 /**

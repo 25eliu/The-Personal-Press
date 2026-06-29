@@ -29,30 +29,31 @@ afterEach(() => { vi.unstubAllGlobals(); });
 
 test('round-trips a cached edition', () => {
   setCachedEdition(BRIEF, PAPER, 1000);
-  expect(getCachedEdition(BRIEF, 1000)).toEqual(PAPER);
+  expect(getCachedEdition(BRIEF)).toEqual(PAPER);
 });
 
 test('lookup is case/space-insensitive', () => {
   setCachedEdition(BRIEF, PAPER, 1000);
-  expect(getCachedEdition('  ai startups, the fed, and the premier league ', 2000)).toEqual(PAPER);
+  expect(getCachedEdition('  ai startups, the fed, and the premier league ')).toEqual(PAPER);
 });
 
 test('returns null for a brief that was never cached', () => {
-  expect(getCachedEdition('never cached', 1000)).toBeNull();
+  expect(getCachedEdition('never cached')).toBeNull();
 });
 
-test('expires entries past the TTL', () => {
+test('is durable — never expires on a timer', () => {
   setCachedEdition(BRIEF, PAPER, 0);
-  expect(getCachedEdition(BRIEF, SIX_HOURS - 1)).toEqual(PAPER);   // still fresh
-  expect(getCachedEdition(BRIEF, SIX_HOURS + 1)).toBeNull();        // expired
+  // Long after the old 6h window, the cached edition is still served (replays with no API).
+  setCachedEdition(BRIEF, PAPER, SIX_HOURS * 1000);
+  expect(getCachedEdition(BRIEF)).toEqual(PAPER);
 });
 
 test('purges cached editions once, then leaves the cache alone', () => {
   setCachedEdition(BRIEF, PAPER, 1000);
   purgeCachedEditionsOnce();                          // first run wipes existing content
-  expect(getCachedEdition(BRIEF, 1000)).toBeNull();
+  expect(getCachedEdition(BRIEF)).toBeNull();
 
   setCachedEdition(BRIEF, PAPER, 1000);               // mechanism still works afterward
   purgeCachedEditionsOnce();                          // sentinel set — no-op now
-  expect(getCachedEdition(BRIEF, 1000)).toEqual(PAPER);
+  expect(getCachedEdition(BRIEF)).toEqual(PAPER);
 });

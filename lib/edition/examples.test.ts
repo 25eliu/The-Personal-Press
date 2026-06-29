@@ -1,7 +1,15 @@
 import { expect, test } from 'vitest';
-import { EXAMPLE_BRIEFS, EXAMPLE_POOL, getDailyBriefs, isExampleBrief, PINNED_BRIEF } from '@/lib/edition/examples';
+import { EXAMPLE_BRIEFS, EXAMPLE_POOL, getDailyBriefs, HOME_BRIEFS, isExampleBrief, PINNED_BRIEF } from '@/lib/edition/examples';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
+
+test('HOME_BRIEFS is a fixed lineup of example briefs, pinned first', () => {
+  expect(HOME_BRIEFS.length).toBe(4);
+  expect(HOME_BRIEFS[0]).toBe(PINNED_BRIEF);
+  // Every shown chip is a recognized example, so each one caches and re-hits.
+  expect(HOME_BRIEFS.every((b) => isExampleBrief(b))).toBe(true);
+  expect(HOME_BRIEFS.every((b) => EXAMPLE_POOL.includes(b as (typeof EXAMPLE_POOL)[number]))).toBe(true);
+});
 
 test('isExampleBrief matches the suggested briefs, case/space-insensitively', () => {
   expect(isExampleBrief(EXAMPLE_BRIEFS[0])).toBe(true);

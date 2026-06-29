@@ -52,15 +52,13 @@ function writeStoredBriefs(briefs: string[], date: string = todayIso()): void {
 }
 
 /**
- * True when a brief is one of today's suggestions — today's fetched set if we have it,
- * otherwise the static rotation pool. Gates instant-replay caching: only suggested
- * briefs are cached, since a reader's own typed brief should always report fresh.
+ * True when a brief is one of the fixed example prompts. Gates instant-replay caching:
+ * only example briefs are cached (so they replay with no API calls); a reader's own typed
+ * brief always reports fresh. The set is the static pool — the home screen shows a fixed
+ * lineup (no daily/live rotation), so what's shown is exactly what caches and re-hits.
+ * PINNED_BRIEF is EXAMPLE_POOL[0], so isExampleBrief already covers it.
  */
 export function isSuggestedBrief(brief: string): boolean {
-  const b = brief.trim().toLowerCase();
-  if (b === PINNED_BRIEF.toLowerCase()) return true;
-  const stored = readStoredBriefs();
-  if (stored?.some((s) => s.toLowerCase() === b)) return true;
   return isExampleBrief(brief);
 }
 

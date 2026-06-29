@@ -1,13 +1,13 @@
 import type { TNewspaper } from '@/lib/schema';
 
 /**
- * localStorage cache of generated editions for the suggested example briefs, so a
- * second look at an example replays instantly with no API calls. Only example briefs
- * are cached (a real brief always reports fresh news). Entries expire after a short
- * window so a re-shown example doesn't read as stale.
+ * localStorage cache of generated editions for the fixed example briefs, so a second look at
+ * an example replays instantly with no API calls. Only example briefs are cached (a real brief
+ * always reports fresh news). Entries are DURABLE — they persist until manually refreshed (bump
+ * PURGE_KEY) rather than expiring on a timer, since the example lineup is fixed and meant to be
+ * a stable, API-free replay.
  */
 const KEY = 'tako-example-editions';
-const TTL_MS = 6 * 60 * 60 * 1000; // 6 hours
 
 // Bump this suffix to force another one-time purge of all cached example editions.
 const PURGE_KEY = 'tako-example-editions-purged-v1';
@@ -37,12 +37,10 @@ function write(store: Store): void {
   }
 }
 
-/** A cached edition for this brief, or null if absent/expired. `now` is injectable for tests. */
-export function getCachedEdition(brief: string, now: number = Date.now()): TNewspaper | null {
+/** A cached edition for this brief, or null if absent. Durable — never expires on a timer. */
+export function getCachedEdition(brief: string): TNewspaper | null {
   const entry = read()[norm(brief)];
-  if (!entry) return null;
-  if (now - entry.ts > TTL_MS) return null;
-  return entry.newspaper;
+  return entry ? entry.newspaper : null;
 }
 
 /** Store (or refresh) the cached edition for a brief. `now` is injectable for tests. */
